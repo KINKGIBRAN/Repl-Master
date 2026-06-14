@@ -1,0 +1,57 @@
+Bertindaklah sebagai Senior Full-Stack Web Developer yang ahli dalam React.js, Tailwind CSS, dan integrasi REST API. Buatkan Aplikasi Web "Reed Stock Management" (Manajemen Stok Sisir Mesin Tenun) yang responsif dengan pendekatan mobile-first design dan tema Dark Mode (UI modern dan rapi seperti Glide Apps).
+​Tech Stack yang Dibutuhkan:
+​Framework: React.js (dengan react-router-dom untuk navigasi).
+​Styling: Tailwind CSS (Tema Dark Mode: background gelap, teks terang, aksen warna solid hijau/merah/biru).
+​Icons: lucide-react.
+​PDF Generator: jspdf dan jspdf-autotable.
+​State Management & API: React Hooks & Fetch/Axios.
+​Database & API Integrations:
+Database menggunakan Google Sheets via SheetDB API.
+URL Endpoint Utama: [https://sheetdb.io/api/v1/jsrzvylcy75sj](https://sheetdb.io/api/v1/jsrzvylcy75sj)
+Terdapat 5 sheet terpisah. Buatkan service wrapper terpusat untuk CRUD ke endpoint berikut (berdasarkan parameter ?sheet=nama_sheet):
+​DASHBOARD: Metrik summary (Total Mesin, Stok, dll).
+​MASTER_STOK: Master data sisir (ID, Spesifikasi/Dimensi, Status).
+​LIVE_TRACKING: Data mesin, lokasi, dan ID sisir yang sedang terpasang.
+​HISTORY_PASANG: Log khusus pemasangan sisir.
+​HISTORY_LEPAS: Log khusus pelepasan dan service sisir (termasuk kondisi akhir).
+​Kebutuhan 4 Tab Utama (Gunakan Bottom Navigation Bar):
+​1. Tab: Dashboard
+​Summary Cards: Ambil data dari DASHBOARD untuk menampilkan kartu metrik (Total Mesin Aktif, Kosong, Stok di Gudang, Sisir Rusak).
+​Live Status: Ambil data dari LIVE_TRACKING. Tampilkan Grid/List ringkas kondisi semua mesin saat ini. Beri indikator (Misal: Border/Dot Hijau jika aktif/ada sisir, Abu-abu jika kosong).
+​2. Tab: Manage (Manajemen Mesin)
+​Tampilkan daftar mesin dari LIVE_TRACKING.
+​Fitur Tambah/Edit: Modal form untuk input No Mesin, SN, Jenis, dan Gedung.
+​Detail Mesin & Logika Pasang/Lepas:
+​Tombol "INSTALL REED" (jika mesin kosong): Update status di LIVE_TRACKING (isi ID sisir), update status di MASTER_STOK menjadi "Dipakai", lalu POST log ke HISTORY_PASANG.
+​Tombol "REMOVE REED" (jika ada sisir): Wajibkan user pilih Kondisi Akhir (BAIK/RUSAK). Update LIVE_TRACKING jadi kosong, update MASTER_STOK sesuai kondisi, lalu POST log ke HISTORY_LEPAS.
+​Riwayat: Gabungkan data dari HISTORY_PASANG dan HISTORY_LEPAS berdasarkan ID Mesin, urutkan descending, tampilkan 10 riwayat terakhir dalam tabel.
+​Tombol Cetak PDF (A4): Jalankan fungsi print (Instruksi detail di bawah).
+​3. Tab: Stok Sisir (Master Data)
+​Tampilkan list semua sisir dari MASTER_STOK dengan filter tab (Semua, Gudang, Dipakai, Rusak).
+​Tambah Sisir: Modal form data baru.
+​Detail Sisir (Kartu Stok): Klik item untuk melihat riwayat perjalanan sisir ini (pernah dipasang di mana saja) dengan menggabungkan log dari histori.
+​Service/Modifikasi: Tombol dengan 2 opsi:
+​Service Supplier: Update status di MASTER_STOK menjadi "Di Supplier".
+​Potong Sisir: Form input dimensi potong baru (Format: Destiny x Panjang x Tinggi). Update spesifikasi di MASTER_STOK dan catat riwayat pemotongan ke log.
+​Tombol Cetak PDF (A4): Jalankan fungsi print riwayat sisir.
+​4. Tab: History (Activity Log)
+​Ambil semua data dari HISTORY_PASANG dan HISTORY_LEPAS, gabungkan (merge), dan urutkan berdasarkan waktu/tanggal paling baru.
+​Tampilkan UI berupa timeline list memanjang ke bawah.
+​Gunakan badge warna: INSTALLED (Hijau), REMOVED (Merah), SERVICED/CUT (Biru/Kuning). Tampilkan detail: ID Mesin, ID Sisir, Operator, Tanggal, dan Kondisi.
+​Instruksi Khusus: Fitur Cetak Laporan PDF (A4)
+Saat tombol cetak diklik di tab Manage (Mesin) atau Stok Sisir, JANGAN gunakan window.print(). Gunakan jspdf dan jspdf-autotable untuk men-generate dokumen PDF berukuran A4 (Portrait) yang langsung terunduh, dengan spesifikasi tata letak berikut:
+​Header (Kop):
+​Kiri Atas: Teks tebal/besar "PT. TRIPUTRA TEXTILE INDUSTRIES", disusul baris kedua "Weaving Reed Tracking System".
+​Garis horizontal tebal pemisah Kop.
+​Di bawah garis, tampilkan Metadata Laporan (Misal: ID/No Mesin & Jenis Mesin, ATAU ID Sisir & Spesifikasi) di kiri, dan Tanggal Cetak Otomatis di kanan.
+​Tabel Data:
+​Gunakan autotable dengan theme: 'striped', warna header abu-abu gelap/biru navy, dan teks header putih.
+​Set styles: { fontSize: 9, overflow: 'linebreak' } agar teks panjang tidak terpotong dan muat di A4.
+​Footer & Tanda Tangan:
+​Di bagian paling bawah (setelah tabel selesai), buat 2 kolom tanda tangan. Kiri: "Dilaporkan Oleh: [Nama Operator]", Kanan: "Diketahui Oleh: [Supervisor]".
+​Berikan margin vertikal 40px untuk spasi tanda tangan manual, lalu garis bawah.
+​Tambahkan nomor halaman (Page X of Y) di sudut kanan bawah setiap lembar.
+​Panduan UI/UX Tambahan:
+​Terapkan loading state (spinner/skeleton) saat fetching API.
+​Terapkan Toast Notifications (berhasil/gagal) setiap kali ada operasi CRUD (Tambah, Edit, Pasang, Lepas, Print) karena SheetDB bisa memiliki delay.
+​Berikan saya kode utuh untuk komponen App utama, Routing, dan satu halaman utama (misal: Dashboard atau layout Navigasinya) untuk langkah pertama
