@@ -1,79 +1,100 @@
 import { useState, useEffect, useCallback } from "react";
-import { fetchMultipleSheets, addRowToSheet, updateRowInSheet, deleteRowFromSheet } from "@/lib/api";
+import { fetchMultipleSheets, addRowToSheet, updateRowInSheet } from "@/lib/api";
 import { LiveTracking, MasterStok, HistoryPasang, HistoryLepas, CombinedHistory } from "@/lib/types";
 import { Spinner } from "@/components/ui/spinner";
 import { Button } from "@/components/ui/button";
-import { Plus, Settings2, History, FileText, ArrowRightCircle, ArrowDownCircle } from "lucide-react";
+import { Plus, History, FileText, ArrowRightCircle, ArrowDownCircle, AlertCircle } from "lucide-react";
 import { toast } from "sonner";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { generateMachineHistoryPDF } from "@/lib/pdf";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Textarea } from "@/components/ui/textarea";
+
+const isGudang = (s: MasterStok) =>
+  s["Status Saat Ini"]?.trim().toLowerCase().includes("gudang") ?? false;
 
 export default function ManagePage() {
   const [machines, setMachines] = useState<LiveTracking[]>([]);
   const [stok, setStok] = useState<MasterStok[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [historyData, setHistoryData] = useState<CombinedHistory[]>([]);
-  
-  // Selection
+
   const [selectedMachine, setSelectedMachine] = useState<LiveTracking | null>(null);
   const [isDetailOpen, setIsDetailOpen] = useState(false);
 
-  // Forms
-  const [newMachine, setNewMachine] = useState({ id_mesin: "", sn: "", jenis: "", gedung: "" });
-  const [installData, setInstallData] = useState({ id_sisir: "", operator: "", catatan: "" });
-  const [removeData, setRemoveData] = useState({ kondisi_akhir: "", operator: "", catatan: "" });
+  const [newMachine, setNewMachine] = useState({ Nomer_Mesin: "", SN_Mesin: "", Jenis_Mesin: "" });
+  const [installData, setInstallData] = useState({ ID_sisir_terpasang: "", Nama_Mekanik: "" });
+  const [removeData, setRemoveData] = useState({ Kondisi_SIsir: "", Nama_Mekanik: "" });
 
   const loadData = useCallback(async () => {
     setLoading(true);
+    setError(null);
     try {
       const sheets = await fetchMultipleSheets(["LIVE_TRACKING", "MASTER_STOK", "HISTORY_PASANG", "HISTORY_LEPAS"]);
-      const trackData = sheets["LIVE_TRACKING"];
-      const stokData = sheets["MASTER_STOK"];
-      const hpData = sheets["HISTORY_PASANG"];
-      const hlData = sheets["HISTORY_LEPAS"];
-      setMachines(trackData || []);
-      setStok(stokData || []);
-      
+      const trackData: LiveTracking[] = (sheets["LIVE_TRACKING"] || []).filter(
+        (m: LiveTracking) => m.Nomer_Mesin && m.Nomer_Mesin.trim() !== ""
+      );
+      const stokData: MasterStok[] = (sheets["MASTER_STOK"] || []).filter(
+        (s: MasterStok) => s["ID SISIR"] && s["ID SISIR"].trim() !== ""
+      );
+      const hpData: HistoryPasang[] = sheets["HISTORY_PASANG"] || [];
+      const hlData: HistoryLepas[] = sheets["HISTORY_LEPAS"] || [];
+
+      setMachines(trackData);
+      setStok(stokData);
+
       const combined: CombinedHistory[] = [
-        ...(hpData || []).map((h: any) => ({ ...h, type: "PASANG" })),
-        ...(hlData || []).map((h: any) => ({ ...h, type: "LEPAS" }))
+        ...hpData.map((h) => ({
+          type: "PASANG" as const,
+          Nomor_Mesin: h.Nomor_Mesin,
+          ID_Sisir: h.ID_Sisir,
+          Nomor_sisir_Destiny: h.Nomor_sisir_Destiny,
+          Nama_Mekanik: h.Nama_Mekanik,
+          tanggal: h.Tanggal_Ganti,
+        })),
+        ...hlData.map((h) => ({
+          type: "LEPAS" as const,
+          Nomor_Mesin: h.Nomor_Mesin,
+          ID_Sisir: h.ID_Sisir,
+          Nomor_sisir_Destiny: h.Nomor_sisir_Destiny,
+          Nama_Mekanik: h.Nama_Mekanik,
+          tanggal: h.Tanggal_Lepas,
+          Kondisi_SIsir: h.Kondisi_SIsir,
+        })),
       ];
       combined.sort((a, b) => new Date(b.tanggal).getTime() - new Date(a.tanggal).getTime());
       setHistoryData(combined);
-      
-      // Update selected machine if it was open
+
       if (selectedMachine) {
-        const updated = trackData?.find((m: LiveTracking) => m.id_mesin === selectedMachine.id_mesin);
+        const updated = trackData.find((m) => m.Nomer_Mesin === selectedMachine.Nomer_Mesin);
         if (updated) setSelectedMachine(updated);
       }
     } catch (err: any) {
-      toast.error(err.message || "Failed to load machines");
+      setError(err.message || "Gagal memuat data");
     } finally {
       setLoading(false);
     }
   }, [selectedMachine]);
 
-  useEffect(() => {
-    loadData();
-  }, []); // Only on mount
+  useEffect(() => { loadData(); }, []);
 
   const handleAddMachine = async () => {
+    if (!newMachine.Nomer_Mesin || !newMachine.Jenis_Mesin) {
+      toast.error("No Mesin dan Jenis harus diisi");
+      return;
+    }
     try {
-      if (!newMachine.id_mesin || !newMachine.jenis) {
-        toast.error("ID Mesin dan Jenis harus diisi");
-        return;
-      }
       await addRowToSheet("LIVE_TRACKING", {
         ...newMachine,
-        id_sisir: "",
-        status_mesin: "Kosong"
+        ID_sisir_terpasang: "",
+        Nomor_sisir_Destiny: "",
+        Tanggal_Pasang: "",
+        Durasi_Pakai: "",
       });
       toast.success("Mesin berhasil ditambahkan");
-      setNewMachine({ id_mesin: "", sn: "", jenis: "", gedung: "" });
+      setNewMachine({ Nomer_Mesin: "", SN_Mesin: "", Jenis_Mesin: "" });
       loadData();
     } catch (err: any) {
       toast.error(err.message);
@@ -82,35 +103,36 @@ export default function ManagePage() {
 
   const handleInstallReed = async () => {
     if (!selectedMachine) return;
-    if (!installData.id_sisir || !installData.operator) {
-      toast.error("Pilih Sisir dan isi nama Operator");
+    if (!installData.ID_sisir_terpasang || !installData.Nama_Mekanik) {
+      toast.error("Pilih Sisir dan isi nama Mekanik");
       return;
     }
-    
     try {
-      const id_log = `PASANG-${Date.now()}`;
-      const tanggal = new Date().toISOString();
-      
-      await updateRowInSheet("LIVE_TRACKING", "id_mesin", selectedMachine.id_mesin, {
-        id_sisir: installData.id_sisir,
-        status_mesin: "Aktif"
+      const tanggal = new Date().toLocaleDateString("id-ID");
+      const sisirRow = stok.find((s) => s["ID SISIR"] === installData.ID_sisir_terpasang);
+
+      await updateRowInSheet("LIVE_TRACKING", "Nomer_Mesin", selectedMachine.Nomer_Mesin, {
+        ID_sisir_terpasang: installData.ID_sisir_terpasang,
+        Nomor_sisir_Destiny: sisirRow?.["Nomor sisir Destiny"] || "",
+        Tanggal_Pasang: tanggal,
       });
-      
-      await updateRowInSheet("MASTER_STOK", "id", installData.id_sisir, {
-        status: "Dipakai"
+
+      await updateRowInSheet("MASTER_STOK", "ID SISIR", installData.ID_sisir_terpasang, {
+        "Status Saat Ini": "SEDANG DIPAKAI",
+        "Mesin Terpasang": selectedMachine.Nomer_Mesin,
       });
-      
+
       await addRowToSheet("HISTORY_PASANG", {
-        id_log,
-        id_mesin: selectedMachine.id_mesin,
-        id_sisir: installData.id_sisir,
-        operator: installData.operator,
-        tanggal,
-        catatan: installData.catatan
+        Tanggal_Ganti: tanggal,
+        Nomor_Mesin: selectedMachine.Nomer_Mesin,
+        ID_Sisir: installData.ID_sisir_terpasang,
+        Nomor_sisir_Destiny: sisirRow?.["Nomor sisir Destiny"] || "",
+        Nama_Mekanik: installData.Nama_Mekanik,
       });
-      
+
       toast.success("Sisir berhasil dipasang");
-      setInstallData({ id_sisir: "", operator: "", catatan: "" });
+      setInstallData({ ID_sisir_terpasang: "", Nama_Mekanik: "" });
+      setIsDetailOpen(false);
       loadData();
     } catch (err: any) {
       toast.error(err.message);
@@ -118,49 +140,73 @@ export default function ManagePage() {
   };
 
   const handleRemoveReed = async () => {
-    if (!selectedMachine || !selectedMachine.id_sisir) return;
-    if (!removeData.kondisi_akhir || !removeData.operator) {
-      toast.error("Pilih Kondisi dan isi nama Operator");
+    if (!selectedMachine || !selectedMachine.ID_sisir_terpasang) return;
+    if (!removeData.Kondisi_SIsir || !removeData.Nama_Mekanik) {
+      toast.error("Pilih Kondisi dan isi nama Mekanik");
       return;
     }
-    
     try {
-      const id_log = `LEPAS-${Date.now()}`;
-      const tanggal = new Date().toISOString();
-      const currentSisir = selectedMachine.id_sisir;
-      
-      await updateRowInSheet("LIVE_TRACKING", "id_mesin", selectedMachine.id_mesin, {
-        id_sisir: "",
-        status_mesin: "Kosong"
+      const tanggal = new Date().toLocaleDateString("id-ID");
+      const currentSisir = selectedMachine.ID_sisir_terpasang;
+      const newStatus = removeData.Kondisi_SIsir.toUpperCase() === "BAIK" ? "DI GUDANG" : "RUSAK";
+
+      await updateRowInSheet("LIVE_TRACKING", "Nomer_Mesin", selectedMachine.Nomer_Mesin, {
+        ID_sisir_terpasang: "",
+        Nomor_sisir_Destiny: "",
+        Tanggal_Pasang: "",
       });
-      
-      await updateRowInSheet("MASTER_STOK", "id", currentSisir, {
-        status: removeData.kondisi_akhir === "BAIK" ? "Gudang" : "Rusak"
+
+      await updateRowInSheet("MASTER_STOK", "ID SISIR", currentSisir, {
+        "Status Saat Ini": newStatus,
+        "Mesin Terpasang": "",
       });
-      
+
       await addRowToSheet("HISTORY_LEPAS", {
-        id_log,
-        id_mesin: selectedMachine.id_mesin,
-        id_sisir: currentSisir,
-        operator: removeData.operator,
-        tanggal,
-        kondisi_akhir: removeData.kondisi_akhir,
-        catatan: removeData.catatan
+        Tanggal_Lepas: tanggal,
+        Nomor_Mesin: selectedMachine.Nomer_Mesin,
+        ID_Sisir: currentSisir,
+        Nomor_sisir_Destiny: selectedMachine.Nomor_sisir_Destiny || "",
+        Nama_Mekanik: removeData.Nama_Mekanik,
+        Kondisi_SIsir: removeData.Kondisi_SIsir,
       });
-      
+
       toast.success("Sisir berhasil dilepas");
-      setRemoveData({ kondisi_akhir: "", operator: "", catatan: "" });
+      setRemoveData({ Kondisi_SIsir: "", Nama_Mekanik: "" });
+      setIsDetailOpen(false);
       loadData();
     } catch (err: any) {
       toast.error(err.message);
     }
   };
 
-  const machineHistory = historyData.filter(h => h.id_mesin === selectedMachine?.id_mesin).slice(0, 10);
-  const availableReeds = stok.filter(s => s.status === "Gudang");
+  const machineHistory = historyData
+    .filter((h) => h.Nomor_Mesin === selectedMachine?.Nomer_Mesin)
+    .slice(0, 10);
+
+  const availableReeds = stok.filter(isGudang);
+
+  if (loading) {
+    return (
+      <div className="flex h-[calc(100vh-5rem)] items-center justify-center">
+        <Spinner className="w-8 h-8 text-primary" />
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="p-4 space-y-3">
+        <div className="flex items-center gap-3 rounded-xl border border-destructive/40 bg-destructive/10 p-4 text-destructive">
+          <AlertCircle className="h-5 w-5 shrink-0" />
+          <p className="text-sm font-semibold">{error}</p>
+        </div>
+        <Button onClick={loadData} className="w-full">Coba Lagi</Button>
+      </div>
+    );
+  }
 
   return (
-    <div className="p-4 space-y-6 pb-24">
+    <div className="p-4 space-y-4 pb-24">
       <div className="flex justify-between items-center">
         <h1 className="text-2xl font-bold tracking-tight">Manajemen Mesin</h1>
         <Dialog>
@@ -168,25 +214,19 @@ export default function ManagePage() {
             <Button size="sm"><Plus className="mr-2 h-4 w-4" />Tambah Mesin</Button>
           </DialogTrigger>
           <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Tambah Mesin Baru</DialogTitle>
-            </DialogHeader>
+            <DialogHeader><DialogTitle>Tambah Mesin Baru</DialogTitle></DialogHeader>
             <div className="space-y-4 py-4">
               <div className="space-y-2">
                 <Label>No Mesin</Label>
-                <Input value={newMachine.id_mesin} onChange={e => setNewMachine({...newMachine, id_mesin: e.target.value})} placeholder="Contoh: M-01" />
+                <Input value={newMachine.Nomer_Mesin} onChange={(e) => setNewMachine({ ...newMachine, Nomer_Mesin: e.target.value })} placeholder="Contoh: M-01" />
               </div>
               <div className="space-y-2">
-                <Label>S/N</Label>
-                <Input value={newMachine.sn} onChange={e => setNewMachine({...newMachine, sn: e.target.value})} placeholder="Serial Number" />
+                <Label>SN Mesin</Label>
+                <Input value={newMachine.SN_Mesin} onChange={(e) => setNewMachine({ ...newMachine, SN_Mesin: e.target.value })} placeholder="Serial Number" />
               </div>
               <div className="space-y-2">
-                <Label>Jenis</Label>
-                <Input value={newMachine.jenis} onChange={e => setNewMachine({...newMachine, jenis: e.target.value})} placeholder="Contoh: Air Jet Loom" />
-              </div>
-              <div className="space-y-2">
-                <Label>Gedung</Label>
-                <Input value={newMachine.gedung} onChange={e => setNewMachine({...newMachine, gedung: e.target.value})} placeholder="Contoh: Gedung A" />
+                <Label>Jenis Mesin</Label>
+                <Input value={newMachine.Jenis_Mesin} onChange={(e) => setNewMachine({ ...newMachine, Jenis_Mesin: e.target.value })} placeholder="Contoh: Air Jet Loom" />
               </div>
             </div>
             <DialogFooter>
@@ -196,91 +236,82 @@ export default function ManagePage() {
         </Dialog>
       </div>
 
-      {loading ? (
-        <div className="flex justify-center py-12"><Spinner className="w-8 h-8 text-primary" /></div>
-      ) : machines.length === 0 ? (
-        <div className="text-center py-12 text-muted-foreground bg-card rounded-lg border border-border">Belum ada mesin. Tambahkan mesin pertama Anda.</div>
+      {machines.length === 0 ? (
+        <div className="text-center py-12 text-muted-foreground bg-card rounded-lg border border-border">
+          Belum ada mesin. Tambahkan mesin pertama Anda.
+        </div>
       ) : (
-        <div className="grid gap-3 grid-cols-1">
-          {machines.map((machine) => (
-            <div 
-              key={machine.id_mesin}
-              onClick={() => { setSelectedMachine(machine); setIsDetailOpen(true); }}
-              className="bg-card border border-border p-4 rounded-lg cursor-pointer hover:border-primary transition-colors flex items-center justify-between"
-            >
-              <div>
-                <div className="font-bold text-lg">{machine.id_mesin}</div>
-                <div className="text-sm text-muted-foreground">{machine.jenis} | Gedung {machine.gedung}</div>
-              </div>
-              <div className="text-right">
-                <div className="text-xs text-muted-foreground">Status</div>
-                <div className={`text-sm font-medium ${machine.id_sisir ? "text-primary" : "text-destructive"}`}>
-                  {machine.id_sisir ? "Aktif" : "Kosong"}
+        <div className="grid gap-2">
+          {machines.map((machine) => {
+            const hasReed = machine.ID_sisir_terpasang && machine.ID_sisir_terpasang.trim() !== "";
+            return (
+              <div
+                key={machine.Nomer_Mesin}
+                onClick={() => { setSelectedMachine(machine); setIsDetailOpen(true); }}
+                className="bg-card border border-border p-4 rounded-xl cursor-pointer hover:border-primary/50 transition-colors flex items-center justify-between"
+              >
+                <div>
+                  <div className="font-bold">{machine.Nomer_Mesin}</div>
+                  <div className="text-sm text-muted-foreground">{machine.Jenis_Mesin} · SN: {String(machine.SN_Mesin) || "-"}</div>
+                </div>
+                <div className="text-right">
+                  <div className={`text-sm font-semibold ${hasReed ? "text-primary" : "text-muted-foreground"}`}>
+                    {hasReed ? "Aktif" : "Kosong"}
+                  </div>
+                  {hasReed && <div className="font-mono text-xs text-muted-foreground">{machine.ID_sisir_terpasang}</div>}
                 </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
 
-      {/* Machine Detail Modal */}
+      {/* Machine Detail Dialog */}
       <Dialog open={isDetailOpen} onOpenChange={setIsDetailOpen}>
         <DialogContent className="max-h-[90vh] overflow-y-auto">
           {selectedMachine && (
             <>
               <DialogHeader>
-                <DialogTitle className="text-xl">Detail Mesin {selectedMachine.id_mesin}</DialogTitle>
+                <DialogTitle>Mesin {selectedMachine.Nomer_Mesin}</DialogTitle>
               </DialogHeader>
-              
-              <div className="grid grid-cols-2 gap-4 bg-muted/50 p-4 rounded-lg">
-                <div>
-                  <div className="text-xs text-muted-foreground">Jenis</div>
-                  <div className="font-medium">{selectedMachine.jenis}</div>
-                </div>
-                <div>
-                  <div className="text-xs text-muted-foreground">Gedung</div>
-                  <div className="font-medium">{selectedMachine.gedung}</div>
-                </div>
-                <div>
-                  <div className="text-xs text-muted-foreground">Serial Number</div>
-                  <div className="font-medium">{selectedMachine.sn || "-"}</div>
-                </div>
-                <div>
-                  <div className="text-xs text-muted-foreground">Sisir Terpasang</div>
-                  <div className="font-medium">{selectedMachine.id_sisir || "Kosong"}</div>
-                </div>
+
+              <div className="grid grid-cols-2 gap-3 bg-muted/30 p-3 rounded-lg text-sm">
+                <div><p className="text-xs text-muted-foreground">Jenis</p><p className="font-medium">{selectedMachine.Jenis_Mesin || "-"}</p></div>
+                <div><p className="text-xs text-muted-foreground">SN Mesin</p><p className="font-medium">{String(selectedMachine.SN_Mesin) || "-"}</p></div>
+                <div><p className="text-xs text-muted-foreground">Sisir Terpasang</p><p className="font-medium font-mono">{selectedMachine.ID_sisir_terpasang || "Kosong"}</p></div>
+                <div><p className="text-xs text-muted-foreground">Tanggal Pasang</p><p className="font-medium">{selectedMachine.Tanggal_Pasang ? new Date(selectedMachine.Tanggal_Pasang).toLocaleDateString("id-ID") : "-"}</p></div>
               </div>
 
               <div className="flex gap-2">
-                {!selectedMachine.id_sisir ? (
+                {!selectedMachine.ID_sisir_terpasang ? (
                   <Dialog>
                     <DialogTrigger asChild>
-                      <Button className="flex-1 bg-primary text-primary-foreground hover:bg-primary/90">
+                      <Button className="flex-1">
                         <ArrowRightCircle className="mr-2 w-4 h-4" /> Pasang Sisir
                       </Button>
                     </DialogTrigger>
                     <DialogContent>
-                      <DialogHeader><DialogTitle>Pasang Sisir Baru</DialogTitle></DialogHeader>
+                      <DialogHeader><DialogTitle>Pasang Sisir ke {selectedMachine.Nomer_Mesin}</DialogTitle></DialogHeader>
                       <div className="space-y-4 py-4">
                         <div className="space-y-2">
-                          <Label>Pilih Sisir (Dari Gudang)</Label>
-                          <Select onValueChange={(v) => setInstallData({...installData, id_sisir: v})}>
-                            <SelectTrigger><SelectValue placeholder="Pilih Sisir" /></SelectTrigger>
+                          <Label>Pilih Sisir (Stok Gudang)</Label>
+                          <Select onValueChange={(v) => setInstallData({ ...installData, ID_sisir_terpasang: v })}>
+                            <SelectTrigger><SelectValue placeholder="Pilih ID Sisir" /></SelectTrigger>
                             <SelectContent>
-                              {availableReeds.map(r => (
-                                <SelectItem key={r.id} value={r.id}>{r.id} - {r.spesifikasi}</SelectItem>
+                              {availableReeds.length === 0 && (
+                                <SelectItem value="_none" disabled>Tidak ada sisir di gudang</SelectItem>
+                              )}
+                              {availableReeds.map((r) => (
+                                <SelectItem key={r["ID SISIR"]} value={r["ID SISIR"]}>
+                                  {r["ID SISIR"]} — {r["Nomor sisir Destiny"]} ({r["Merk Supplier"]})
+                                </SelectItem>
                               ))}
-                              {availableReeds.length === 0 && <SelectItem value="none" disabled>Tidak ada sisir di gudang</SelectItem>}
                             </SelectContent>
                           </Select>
                         </div>
                         <div className="space-y-2">
-                          <Label>Operator</Label>
-                          <Input value={installData.operator} onChange={e => setInstallData({...installData, operator: e.target.value})} placeholder="Nama Operator" />
-                        </div>
-                        <div className="space-y-2">
-                          <Label>Catatan (Opsional)</Label>
-                          <Textarea value={installData.catatan} onChange={e => setInstallData({...installData, catatan: e.target.value})} />
+                          <Label>Nama Mekanik</Label>
+                          <Input value={installData.Nama_Mekanik} onChange={(e) => setInstallData({ ...installData, Nama_Mekanik: e.target.value })} placeholder="Nama Mekanik" />
                         </div>
                       </div>
                       <DialogFooter>
@@ -296,52 +327,56 @@ export default function ManagePage() {
                       </Button>
                     </DialogTrigger>
                     <DialogContent>
-                      <DialogHeader><DialogTitle>Lepas Sisir {selectedMachine.id_sisir}</DialogTitle></DialogHeader>
+                      <DialogHeader><DialogTitle>Lepas Sisir {selectedMachine.ID_sisir_terpasang}</DialogTitle></DialogHeader>
                       <div className="space-y-4 py-4">
                         <div className="space-y-2">
-                          <Label>Kondisi Akhir</Label>
-                          <Select onValueChange={(v) => setRemoveData({...removeData, kondisi_akhir: v})}>
+                          <Label>Kondisi Sisir Setelah Dilepas</Label>
+                          <Select onValueChange={(v) => setRemoveData({ ...removeData, Kondisi_SIsir: v })}>
                             <SelectTrigger><SelectValue placeholder="Pilih Kondisi" /></SelectTrigger>
                             <SelectContent>
-                              <SelectItem value="BAIK">Baik (Kembali ke Gudang)</SelectItem>
+                              <SelectItem value="BAIK">Baik → Kembali ke Gudang</SelectItem>
                               <SelectItem value="RUSAK">Rusak</SelectItem>
                             </SelectContent>
                           </Select>
                         </div>
                         <div className="space-y-2">
-                          <Label>Operator</Label>
-                          <Input value={removeData.operator} onChange={e => setRemoveData({...removeData, operator: e.target.value})} placeholder="Nama Operator" />
-                        </div>
-                        <div className="space-y-2">
-                          <Label>Catatan (Opsional)</Label>
-                          <Textarea value={removeData.catatan} onChange={e => setRemoveData({...removeData, catatan: e.target.value})} />
+                          <Label>Nama Mekanik</Label>
+                          <Input value={removeData.Nama_Mekanik} onChange={(e) => setRemoveData({ ...removeData, Nama_Mekanik: e.target.value })} placeholder="Nama Mekanik" />
                         </div>
                       </div>
                       <DialogFooter>
-                        <Button onClick={handleRemoveReed} variant="destructive">Konfirmasi Lepas</Button>
+                        <Button variant="destructive" onClick={handleRemoveReed}>Konfirmasi Lepas</Button>
                       </DialogFooter>
                     </DialogContent>
                   </Dialog>
                 )}
-                
-                <Button variant="outline" onClick={() => generateMachineHistoryPDF(selectedMachine.id_mesin, selectedMachine.jenis, machineHistory)}>
+
+                <Button variant="outline" onClick={() => generateMachineHistoryPDF(selectedMachine.Nomer_Mesin, selectedMachine.Jenis_Mesin, machineHistory)}>
                   <FileText className="w-4 h-4 mr-2" /> PDF
                 </Button>
               </div>
 
-              <div className="mt-6">
-                <h3 className="font-bold mb-3 flex items-center"><History className="w-4 h-4 mr-2" /> Riwayat Terakhir</h3>
+              <div>
+                <h3 className="font-semibold mb-3 flex items-center gap-2 text-sm">
+                  <History className="w-4 h-4" /> Riwayat Terakhir
+                </h3>
                 {machineHistory.length === 0 ? (
-                  <div className="text-center text-sm text-muted-foreground py-4">Belum ada riwayat</div>
+                  <p className="text-sm text-muted-foreground text-center py-4">Belum ada riwayat</p>
                 ) : (
-                  <div className="space-y-3">
-                    {machineHistory.map(h => (
-                      <div key={h.id_log} className="text-sm border-l-2 pl-3 py-1" style={{ borderColor: h.type === 'PASANG' ? 'hsl(var(--primary))' : 'hsl(var(--destructive))' }}>
+                  <div className="space-y-2">
+                    {machineHistory.map((h, i) => (
+                      <div
+                        key={i}
+                        className="text-sm border-l-2 pl-3 py-1"
+                        style={{ borderColor: h.type === "PASANG" ? "hsl(var(--primary))" : "hsl(var(--destructive))" }}
+                      >
                         <div className="flex justify-between font-medium">
-                          <span>{h.type} {h.id_sisir}</span>
-                          <span className="text-muted-foreground text-xs">{new Date(h.tanggal).toLocaleDateString('id-ID')}</span>
+                          <span>{h.type} — {h.ID_Sisir}</span>
+                          <span className="text-muted-foreground text-xs">{h.tanggal ? new Date(h.tanggal).toLocaleDateString("id-ID") : "-"}</span>
                         </div>
-                        <div className="text-muted-foreground text-xs mt-1">Oleh: {h.operator} {h.kondisi_akhir ? `• ${h.kondisi_akhir}` : ''}</div>
+                        <div className="text-muted-foreground text-xs mt-0.5">
+                          Mekanik: {h.Nama_Mekanik}{h.Kondisi_SIsir ? ` · ${h.Kondisi_SIsir}` : ""}
+                        </div>
                       </div>
                     ))}
                   </div>

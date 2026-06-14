@@ -1,131 +1,105 @@
-import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable';
-import { CombinedHistory } from './types';
+import jsPDF from "jspdf";
+import autoTable from "jspdf-autotable";
+import { CombinedHistory } from "./types";
 
-export const generateMachineHistoryPDF = (machineId: string, machineType: string, history: CombinedHistory[]) => {
-  const doc = new jsPDF({
-    orientation: 'portrait',
-    unit: 'mm',
-    format: 'a4'
-  });
-
-  // Header
-  doc.setFontSize(16);
-  doc.setFont('helvetica', 'bold');
-  doc.text('PT. TRIPUTRA TEXTILE INDUSTRIES', 105, 20, { align: 'center' });
-  doc.setFontSize(12);
-  doc.setFont('helvetica', 'normal');
-  doc.text('Weaving Reed Tracking System', 105, 28, { align: 'center' });
-
-  // Separator
-  doc.setLineWidth(0.5);
-  doc.line(14, 32, 196, 32);
-
-  // Metadata
+const addHeader = (doc: jsPDF, leftLine1: string, leftLine2: string) => {
+  doc.setFontSize(15);
+  doc.setFont("helvetica", "bold");
+  doc.text("PT. TRIPUTRA TEXTILE INDUSTRIES", 105, 18, { align: "center" });
   doc.setFontSize(10);
-  doc.text(`No Mesin: ${machineId}`, 14, 40);
-  doc.text(`Jenis Mesin: ${machineType}`, 14, 46);
-  
-  const today = new Date().toLocaleDateString('id-ID');
-  doc.text(`Tanggal Cetak: ${today}`, 196, 40, { align: 'right' });
+  doc.setFont("helvetica", "normal");
+  doc.text("Weaving Reed Tracking System", 105, 25, { align: "center" });
 
-  // Table
-  const tableData = history.map(row => [
-    new Date(row.tanggal).toLocaleDateString('id-ID'),
-    row.type,
-    row.id_sisir,
-    row.operator,
-    row.kondisi_akhir || '-',
-    row.catatan || '-'
-  ]);
+  doc.setLineWidth(0.6);
+  doc.line(14, 30, 196, 30);
 
-  autoTable(doc, {
-    startY: 52,
-    head: [['Tanggal', 'Aktivitas', 'ID Sisir', 'Operator', 'Kondisi', 'Catatan']],
-    body: tableData,
-    theme: 'striped',
-    headStyles: { fillColor: [15, 23, 42], textColor: 255, fontSize: 9 },
-    styles: { fontSize: 8 },
-    margin: { top: 50 }
-  });
-
-  // Footer
-  const finalY = (doc as any).lastAutoTable.finalY || 52;
-  const footerY = Math.max(finalY + 40, 250);
-
-  doc.text('Dilaporkan Oleh:', 40, footerY);
-  doc.line(30, footerY + 15, 80, footerY + 15);
-
-  doc.text('Diketahui Oleh:', 150, footerY);
-  doc.line(140, footerY + 15, 190, footerY + 15);
-
-  // Page Numbers
-  const pageCount = doc.getNumberOfPages();
-  for (let i = 1; i <= pageCount; i++) {
-    doc.setPage(i);
-    doc.text(`Halaman ${i} dari ${pageCount}`, 196, 290, { align: 'right' });
-  }
-
-  doc.save(`History_Mesin_${machineId}.pdf`);
+  doc.setFontSize(9);
+  doc.text(leftLine1, 14, 37);
+  doc.text(leftLine2, 14, 43);
+  const today = new Date().toLocaleDateString("id-ID", { day: "2-digit", month: "long", year: "numeric" });
+  doc.text(`Tanggal Cetak: ${today}`, 196, 37, { align: "right" });
 };
 
-export const generateReedHistoryPDF = (reedId: string, spesifikasi: string, history: CombinedHistory[]) => {
-  const doc = new jsPDF({
-    orientation: 'portrait',
-    unit: 'mm',
-    format: 'a4'
-  });
+const addSignatureFooter = (doc: jsPDF, operator: string = "___________________") => {
+  const pages = doc.getNumberOfPages();
+  for (let i = 1; i <= pages; i++) {
+    doc.setPage(i);
 
-  doc.setFontSize(16);
-  doc.setFont('helvetica', 'bold');
-  doc.text('PT. TRIPUTRA TEXTILE INDUSTRIES', 105, 20, { align: 'center' });
-  doc.setFontSize(12);
-  doc.setFont('helvetica', 'normal');
-  doc.text('Weaving Reed Tracking System', 105, 28, { align: 'center' });
+    // Page numbers
+    doc.setFontSize(8);
+    doc.text(`Halaman ${i} dari ${pages}`, 196, 290, { align: "right" });
 
-  doc.setLineWidth(0.5);
-  doc.line(14, 32, 196, 32);
+    // Signatures only on last page
+    if (i === pages) {
+      const finalY = (doc as any).lastAutoTable?.finalY ?? 200;
+      const sigY = Math.min(finalY + 20, 255);
 
-  doc.setFontSize(10);
-  doc.text(`ID Sisir: ${reedId}`, 14, 40);
-  doc.text(`Spesifikasi: ${spesifikasi}`, 14, 46);
-  
-  const today = new Date().toLocaleDateString('id-ID');
-  doc.text(`Tanggal Cetak: ${today}`, 196, 40, { align: 'right' });
+      doc.setFontSize(9);
+      doc.text(`Dilaporkan Oleh: ${operator}`, 30, sigY);
+      doc.line(28, sigY + 16, 90, sigY + 16);
 
-  const tableData = history.map(row => [
-    new Date(row.tanggal).toLocaleDateString('id-ID'),
-    row.type,
-    row.id_mesin,
-    row.operator,
-    row.kondisi_akhir || '-',
-    row.catatan || '-'
-  ]);
+      doc.text("Diketahui Oleh: ___________________", 130, sigY);
+      doc.line(128, sigY + 16, 190, sigY + 16);
+    }
+  }
+};
+
+export const generateMachineHistoryPDF = (
+  machineId: string,
+  machineType: string,
+  history: CombinedHistory[]
+) => {
+  const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+
+  addHeader(doc, `No Mesin: ${machineId}`, `Jenis Mesin: ${machineType}`);
 
   autoTable(doc, {
-    startY: 52,
-    head: [['Tanggal', 'Aktivitas', 'Mesin', 'Operator', 'Kondisi', 'Catatan']],
-    body: tableData,
-    theme: 'striped',
-    headStyles: { fillColor: [15, 23, 42], textColor: 255, fontSize: 9 },
-    styles: { fontSize: 8 },
-    margin: { top: 50 }
+    startY: 50,
+    head: [["Tanggal", "Aktivitas", "ID Sisir", "Nomor Destiny", "Mekanik", "Kondisi"]],
+    body: history.map((h) => [
+      h.tanggal,
+      h.type,
+      h.ID_Sisir,
+      h.Nomor_sisir_Destiny || "-",
+      h.Nama_Mekanik,
+      h.Kondisi_SIsir || "-",
+    ]),
+    theme: "striped",
+    headStyles: { fillColor: [15, 23, 42], textColor: 255, fontSize: 9, fontStyle: "bold" },
+    styles: { fontSize: 8, overflow: "linebreak" },
+    columnStyles: { 0: { cellWidth: 22 }, 1: { cellWidth: 18 } },
   });
 
-  const finalY = (doc as any).lastAutoTable.finalY || 52;
-  const footerY = Math.max(finalY + 40, 250);
+  addSignatureFooter(doc);
+  doc.save(`Laporan_Mesin_${machineId}.pdf`);
+};
 
-  doc.text('Dilaporkan Oleh:', 40, footerY);
-  doc.line(30, footerY + 15, 80, footerY + 15);
+export const generateReedHistoryPDF = (
+  reedId: string,
+  destiny: string,
+  history: CombinedHistory[]
+) => {
+  const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
 
-  doc.text('Diketahui Oleh:', 150, footerY);
-  doc.line(140, footerY + 15, 190, footerY + 15);
+  addHeader(doc, `ID Sisir: ${reedId}`, `Nomor Destiny: ${destiny}`);
 
-  const pageCount = doc.getNumberOfPages();
-  for (let i = 1; i <= pageCount; i++) {
-    doc.setPage(i);
-    doc.text(`Halaman ${i} dari ${pageCount}`, 196, 290, { align: 'right' });
-  }
+  autoTable(doc, {
+    startY: 50,
+    head: [["Tanggal", "Aktivitas", "Nomor Mesin", "Nomor Destiny", "Mekanik", "Kondisi"]],
+    body: history.map((h) => [
+      h.tanggal,
+      h.type,
+      h.Nomor_Mesin,
+      h.Nomor_sisir_Destiny || "-",
+      h.Nama_Mekanik,
+      h.Kondisi_SIsir || "-",
+    ]),
+    theme: "striped",
+    headStyles: { fillColor: [15, 23, 42], textColor: 255, fontSize: 9, fontStyle: "bold" },
+    styles: { fontSize: 8, overflow: "linebreak" },
+    columnStyles: { 0: { cellWidth: 22 }, 1: { cellWidth: 18 } },
+  });
 
-  doc.save(`History_Sisir_${reedId}.pdf`);
+  addSignatureFooter(doc);
+  doc.save(`Laporan_Sisir_${reedId}.pdf`);
 };

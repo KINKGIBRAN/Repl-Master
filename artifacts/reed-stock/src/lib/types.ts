@@ -1,51 +1,47 @@
-export interface DashboardMetrics {
-  "Total Mesin": string;
-  "Mesin Kosong": string;
-  "Stok di Gudang": string;
-  "Sisir Rusak": string;
-}
-
-export interface MasterStok {
-  id: string;
-  spesifikasi: string;
-  status: "Gudang" | "Dipakai" | "Rusak" | "Di Supplier" | string;
-}
-
 export interface LiveTracking {
-  id_mesin: string;
-  sn: string;
-  jenis: string;
-  gedung: string;
-  id_sisir: string;
-  status_mesin: string;
+  Nomer_Mesin: string;
+  Jenis_Mesin: string;
+  SN_Mesin: string | number;
+  ID_sisir_terpasang: string;
+  Nomor_sisir_Destiny: string;
+  Tanggal_Pasang: string;
+  Durasi_Pakai: string;
+}
+
+// ─── Actual column names returned by the GAS endpoint ─────────────────────────
+export interface MasterStok {
+  "ID SISIR": string;
+  "Nomor sisir Destiny": string;
+  "Merk Supplier": string;
+  "Posisi Rak": string;
+  "Status Saat Ini": string;
+  "Mesin Terpasang": string;
+  "Kondisi Sisir": string;
 }
 
 export interface HistoryPasang {
-  id_log: string;
-  id_mesin: string;
-  id_sisir: string;
-  operator: string;
-  tanggal: string;
-  catatan: string;
+  Tanggal_Ganti: string;
+  Nomor_Mesin: string;
+  ID_Sisir: string;
+  Nomor_sisir_Destiny: string;
+  Nama_Mekanik: string;
 }
 
 export interface HistoryLepas {
-  id_log: string;
-  id_mesin: string;
-  id_sisir: string;
-  operator: string;
-  tanggal: string;
-  kondisi_akhir: string;
-  catatan: string;
+  Tanggal_Lepas: string;
+  Nomor_Mesin: string;
+  ID_Sisir: string;
+  Nomor_sisir_Destiny: string;
+  Nama_Mekanik: string;
+  Kondisi_SIsir: string;
 }
 
 export interface CombinedHistory {
-  id_log: string;
-  type: 'PASANG' | 'LEPAS';
-  id_mesin: string;
-  id_sisir: string;
-  operator: string;
+  type: "PASANG" | "LEPAS";
+  Nomor_Mesin: string;
+  ID_Sisir: string;
+  Nomor_sisir_Destiny: string;
+  Nama_Mekanik: string;
   tanggal: string;
-  catatan: string;
-  kondisi_akhir?: string;
+  Kondisi_SIsir?: string;
 }
