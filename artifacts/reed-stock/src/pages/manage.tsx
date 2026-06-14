@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { fetchSheetData, addRowToSheet, updateRowInSheet, deleteRowFromSheet } from "@/lib/api";
+import { fetchMultipleSheets, addRowToSheet, updateRowInSheet, deleteRowFromSheet } from "@/lib/api";
 import { LiveTracking, MasterStok, HistoryPasang, HistoryLepas, CombinedHistory } from "@/lib/types";
 import { Spinner } from "@/components/ui/spinner";
 import { Button } from "@/components/ui/button";
@@ -30,12 +30,11 @@ export default function ManagePage() {
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const [trackData, stokData, hpData, hlData] = await Promise.all([
-        fetchSheetData("LIVE_TRACKING"),
-        fetchSheetData("MASTER_STOK"),
-        fetchSheetData("HISTORY_PASANG"),
-        fetchSheetData("HISTORY_LEPAS")
-      ]);
+      const sheets = await fetchMultipleSheets(["LIVE_TRACKING", "MASTER_STOK", "HISTORY_PASANG", "HISTORY_LEPAS"]);
+      const trackData = sheets["LIVE_TRACKING"];
+      const stokData = sheets["MASTER_STOK"];
+      const hpData = sheets["HISTORY_PASANG"];
+      const hlData = sheets["HISTORY_LEPAS"];
       setMachines(trackData || []);
       setStok(stokData || []);
       

@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { fetchSheetData } from "@/lib/api";
+import { fetchMultipleSheets } from "@/lib/api";
 import { LiveTracking, MasterStok } from "@/lib/types";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Spinner } from "@/components/ui/spinner";
@@ -24,10 +24,9 @@ export default function DashboardPage() {
     setLoading(true);
     setError(null);
     try {
-      const [trackData, stokData] = await Promise.all([
-        fetchSheetData("LIVE_TRACKING"),
-        fetchSheetData("MASTER_STOK"),
-      ]);
+      const sheets = await fetchMultipleSheets(["LIVE_TRACKING", "MASTER_STOK"]);
+      const trackData = sheets["LIVE_TRACKING"];
+      const stokData = sheets["MASTER_STOK"];
 
       const liveTracking: LiveTracking[] = trackData || [];
       const masterStok: MasterStok[] = stokData || [];

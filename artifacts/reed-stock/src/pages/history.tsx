@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { fetchSheetData } from "@/lib/api";
+import { fetchMultipleSheets } from "@/lib/api";
 import { CombinedHistory } from "@/lib/types";
 import { Spinner } from "@/components/ui/spinner";
 import { toast } from "sonner";
@@ -12,10 +12,9 @@ export default function HistoryPage() {
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const [hpData, hlData] = await Promise.all([
-        fetchSheetData("HISTORY_PASANG"),
-        fetchSheetData("HISTORY_LEPAS")
-      ]);
+      const sheets = await fetchMultipleSheets(["HISTORY_PASANG", "HISTORY_LEPAS"]);
+      const hpData = sheets["HISTORY_PASANG"];
+      const hlData = sheets["HISTORY_LEPAS"];
       
       const combined: CombinedHistory[] = [
         ...(hpData || []).map((h: any) => ({ ...h, type: "PASANG" })),

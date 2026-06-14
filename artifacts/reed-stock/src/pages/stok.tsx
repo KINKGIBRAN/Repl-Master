@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { fetchSheetData, addRowToSheet, updateRowInSheet } from "@/lib/api";
+import { fetchMultipleSheets, addRowToSheet, updateRowInSheet } from "@/lib/api";
 import { MasterStok, CombinedHistory } from "@/lib/types";
 import { Spinner } from "@/components/ui/spinner";
 import { Button } from "@/components/ui/button";
@@ -29,11 +29,10 @@ export default function StokPage() {
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const [stokData, hpData, hlData] = await Promise.all([
-        fetchSheetData("MASTER_STOK"),
-        fetchSheetData("HISTORY_PASANG"),
-        fetchSheetData("HISTORY_LEPAS")
-      ]);
+      const sheets = await fetchMultipleSheets(["MASTER_STOK", "HISTORY_PASANG", "HISTORY_LEPAS"]);
+      const stokData = sheets["MASTER_STOK"];
+      const hpData = sheets["HISTORY_PASANG"];
+      const hlData = sheets["HISTORY_LEPAS"];
       setStok(stokData || []);
       
       const combined: CombinedHistory[] = [
