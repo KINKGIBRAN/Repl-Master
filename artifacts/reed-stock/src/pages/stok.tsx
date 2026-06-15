@@ -149,20 +149,31 @@ export default function StokPage() {
     }
   };
   const handleTerimaService = async () => {
-    if (!selectedReed) return;
-    const id = selectedReed["ID SISIR"];
-    try {
-      await updateRowInSheet("MASTER_STOK", "ID SISIR", id, { "Status Saat Ini": "DI GUDANG" });
-      await updateRowInSheet("MASTER_STOK", "ID SISIR", id, { "Kondisi Sisir": "BAGUS" });
-      await updateRowInSheet("MASTER_STOK", "ID SISIR", id, { "Mesin Terpasang": "-" });
-      toast.success("Sisir diterima kembali — masuk stok gudang");
-      setIsDetailOpen(false);
-      setTimeout(() => loadData(), 1500);
-    } catch (err: any) {
-      toast.error(err.message);
-    }
-  };
+      if (!selectedReed) return;
 
+      // PERBAIKAN: Ambil ID dan Nomor Destiny langsung dari properti objek selectedReed yang sesuai
+      const idSisir = selectedReed.id || selectedReed.id_sisir || selectedReed["ID SISIR"];
+      const nomorDestiny = selectedReed.nomor_destiny || selectedReed.nomorDestiny || selectedReed["Nomor Destiny"];
+
+      const tanggalSekarang = new Date().toISOString(); 
+
+      try {
+        await addRowToSheet("HISTORY_LEPAS", {
+          "Tanggal_Lepas": tanggalSekarang,
+          "Nomor_Mesin": "DARI SUPPLIER", 
+          "ID_Sisir": idSisir, // Menggunakan variabel yang sudah diperbaiki
+          "Nomor_sisir_Destiny": nomorDestiny || "-", // Menggunakan variabel yang sudah diperbaiki
+          "Nama_Mekanik": "-", 
+          "Kondisi_SIsir": "BAIK" 
+        });
+
+        toast.success("Data berhasil masuk ke History Lepas");
+        setIsDetailOpen(false);
+        setTimeout(() => loadData(), 1500);
+      } catch (err: any) {
+        toast.error(err.message);
+      }
+  };
   const handlePotong = async () => {
     if (!selectedReed || !cutData.dimensi) {
       toast.error("Isi dimensi baru");
