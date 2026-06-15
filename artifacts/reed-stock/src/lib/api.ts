@@ -50,7 +50,7 @@ export async function fetchSheetData(sheetName: string): Promise<any[]> {
   }
 }
 
-// ─── Parallel multi-sheet fetch (GAS has no per-IP rate limit like SheetDB) ───
+// ─── Parallel multi-sheet fetch ───────────────────────────────────────────────
 export async function fetchMultipleSheets(sheetNames: string[]): Promise<Record<string, any[]>> {
   const entries = await Promise.all(
     sheetNames.map(async (name) => {
@@ -61,7 +61,7 @@ export async function fetchMultipleSheets(sheetNames: string[]): Promise<Record<
   return Object.fromEntries(entries);
 }
 
-// ─── POST — insert a new row into a sheet ─────────────────────────────────────
+// ─── POST — insert a new row into a sheet ────────────────────────────────────
 export async function addRowToSheet(sheetName: string, row: Record<string, any>): Promise<any> {
   const url = `${PROXY_BASE}?sheet=${encodeURIComponent(sheetName)}&action=insert`;
   console.log("Fetching URL:", url, "data:", row);
@@ -86,20 +86,21 @@ export async function addRowToSheet(sheetName: string, row: Record<string, any>)
   }
 }
 
-// ─── POST update — update rows matched by a key column ───────────────────────
+// ─── POST action=update — update row matched by a key column ─────────────────
+// GAS tidak support method PUT native, jadi pakai POST + action=update
 export async function updateRowInSheet(
   sheetName: string,
   keyColumn: string,
   keyValue: string,
   updates: Record<string, any>
 ): Promise<any> {
-  const url = `${PROXY_BASE}?sheet=${encodeURIComponent(sheetName)}&action=update`;
-  console.log("Fetching URL:", url, { keyColumn, keyValue, updates });
+  const url = `${PROXY_BASE}?sheet=${encodeURIComponent(sheetName)}&action=update&filterColumn=${encodeURIComponent(keyColumn)}&filterValue=${encodeURIComponent(keyValue)}`;
+  console.log("Fetching URL:", url, { updates });
   try {
     const res = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ key: keyColumn, value: keyValue, data: updates }),
+      body: JSON.stringify(updates),
     });
     if (!res.ok) {
       const text = await res.text().catch(() => "");
@@ -116,19 +117,19 @@ export async function updateRowInSheet(
   }
 }
 
-// ─── POST delete — delete rows matched by a key column ───────────────────────
+// ─── POST action=delete — delete row matched by a key column ─────────────────
 export async function deleteRowFromSheet(
   sheetName: string,
   keyColumn: string,
   keyValue: string
 ): Promise<any> {
-  const url = `${PROXY_BASE}?sheet=${encodeURIComponent(sheetName)}&action=delete`;
+  const url = `${PROXY_BASE}?sheet=${encodeURIComponent(sheetName)}&action=delete&filterColumn=${encodeURIComponent(keyColumn)}&filterValue=${encodeURIComponent(keyValue)}`;
   console.log("Fetching URL:", url, { keyColumn, keyValue });
   try {
     const res = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ key: keyColumn, value: keyValue }),
+      body: JSON.stringify({}),
     });
     if (!res.ok) {
       const text = await res.text().catch(() => "");
