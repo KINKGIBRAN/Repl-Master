@@ -1,0 +1,4 @@
+- [GAS Backend & Proxy](gas-backend.md) — GAS URL + proxy route `/api/gas` in api-server; POST uses text/plain to GAS; update works, insert may 500 on GAS crash.
+- [GAS Column Names](gas-columns.md) — exact column names that differ from snake_case defaults; critical for all CRUD operations.
+- [Auth System](auth-system.md) — PIN-based admin auth via `/api/auth/login`; ADMIN_PIN env var; sessionStorage key `rti_admin_mode`.
+- [Status Values & Locks](status-locks.md) — exact GAS status strings and lock logic for sisir install/modify.

@@ -3,11 +3,23 @@ import { fetchMultipleSheets } from "@/lib/api";
 import { LiveTracking, MasterStok } from "@/lib/types";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Spinner } from "@/components/ui/spinner";
-import { AlertCircle, Server, CheckCircle2, XCircle, PackageX, Calendar, Clock, User, X } from "lucide-react";
+import { AlertCircle, Server, CheckCircle2, XCircle, PackageX, Calendar, Clock, User, X, Search, MapPin } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 
 const statusLike = (value: string, ...keywords: string[]) =>
   keywords.some((k) => value?.trim().toLowerCase().includes(k.toLowerCase()));
+
+const formatDate = (str: string): string => {
+  if (!str || str === "-") return "-";
+  try {
+    const d = new Date(str);
+    if (isNaN(d.getTime())) return str;
+    return d.toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric" });
+  } catch {
+    return str;
+  }
+};
 
 interface Metrics {
   mesinAktif: number;
@@ -21,8 +33,8 @@ export default function DashboardPage() {
   const [machines, setMachines] = useState<LiveTracking[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
 
-  // State untuk fitur interaktif Pop-up Riwayat Mesin
   const [selectedMachine, setSelectedMachine] = useState<string | null>(null);
   const [historyData, setHistoryData] = useState<{ pasang: any[]; lepas: any[] }>({ pasang: [], lepas: [] });
   const [loadingHistory, setLoadingHistory] = useState(false);
@@ -39,11 +51,10 @@ export default function DashboardPage() {
         (s: MasterStok) => s["ID SISIR"] && s["ID SISIR"].trim() !== ""
       );
 
-      // Cek keaktifan mesin secara akurat (tanda "-" dihitung kosong)
       const totalMesin = liveTracking.length;
       const mesinAktif = liveTracking.filter(
-        (m) => m.ID_sisir_terpasang && 
-               m.ID_sisir_terpasang.trim() !== "" && 
+        (m) => m.ID_sisir_terpasang &&
+               m.ID_sisir_terpasang.trim() !== "" &&
                m.ID_sisir_terpasang.trim() !== "-"
       ).length;
       const mesinKosong = totalMesin - mesinAktif;
@@ -66,20 +77,17 @@ export default function DashboardPage() {
 
   useEffect(() => { loadData(); }, [loadData]);
 
-  // Fungsi interaktif mengambil riwayat saat nomor mesin diketuk
   const handleMachineClick = async (nomerMesin: string) => {
     setSelectedMachine(nomerMesin);
     setLoadingHistory(true);
     try {
       const sheets = await fetchMultipleSheets(["HISTORY_PASANG", "HISTORY_LEPAS"]);
-
       const pasang = (sheets["HISTORY_PASANG"] || []).filter(
         (h: any) => h.Nomor_Mesin?.trim().toLowerCase() === nomerMesin.trim().toLowerCase()
       );
       const lepas = (sheets["HISTORY_LEPAS"] || []).filter(
         (h: any) => h.Nomor_Mesin?.trim().toLowerCase() === nomerMesin.trim().toLowerCase()
       );
-
       setHistoryData({ pasang, lepas });
     } catch (err) {
       console.error("Gagal memuat riwayat mesin", err);
@@ -87,6 +95,18 @@ export default function DashboardPage() {
       setLoadingHistory(false);
     }
   };
+
+  const filteredMachines = searchQuery.trim()
+    ? machines.filter((m) => {
+        const q = searchQuery.toLowerCase();
+        return (
+          m.Nomer_Mesin?.toLowerCase().includes(q) ||
+          m.ID_sisir_terpasang?.toLowerCase().includes(q) ||
+          (m.Nomor_sisir_Destiny || m["Nomor sisir Destiny"] || "").toLowerCase().includes(q) ||
+          m.Posisi_Gedung?.toLowerCase().includes(q)
+        );
+      })
+    : machines;
 
   if (loading) {
     return (
@@ -111,7 +131,6 @@ export default function DashboardPage() {
     );
   }
 
-  // 4 Kartu Ringkasan Atas (Grid Susunan Kotak 2x2)
   const summaryCards = [
     { label: "Mesin Aktif", value: metrics?.mesinAktif ?? 0, icon: CheckCircle2, color: "text-primary", bg: "bg-primary/10" },
     { label: "Mesin Kosong", value: metrics?.mesinKosong ?? 0, icon: AlertCircle, color: "text-yellow-400", bg: "bg-yellow-400/10" },
@@ -128,7 +147,6 @@ export default function DashboardPage() {
         <h1 className="text-2xl font-bold tracking-tight">Dashboard</h1>
       </div>
 
-      {/* Grid Metrik Atas 2x2 */}
       <div className="grid gap-3 grid-cols-2">
         {summaryCards.map((card) => (
           <Card key={card.label} className="bg-card border-border/50">
@@ -146,30 +164,48 @@ export default function DashboardPage() {
       </div>
 
       <div>
-        <h2 className="text-base font-semibold tracking-tight mb-3 flex items-center gap-2">
-          <span className="w-2 h-2 rounded-full bg-primary inline-block animate-pulse" />
-          Live Status Mesin
-        </h2>
-        {machines.length === 0 ? (
+        <div className="flex items-center gap-2 mb-3">
+          <h2 className="text-base font-semibold tracking-tight flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-primary inline-block animate-pulse" />
+            Live Status Mesin
+          </h2>
+          <span className="text-xs text-muted-foreground ml-auto">{filteredMachines.length}/{machines.length}</span>
+        </div>
+
+        <div className="relative mb-3">
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground/70" />
+          <Input
+            type="text"
+            placeholder="Cari mesin, sisir, ID, atau gedung..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="pl-9 pr-9 h-9 rounded-xl text-sm"
+          />
+          {searchQuery && (
+            <button onClick={() => setSearchQuery("")} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground text-xs">
+              ✕
+            </button>
+          )}
+        </div>
+
+        {filteredMachines.length === 0 ? (
           <div className="text-center py-12 text-muted-foreground">
             <XCircle className="mx-auto mb-2 h-8 w-8 opacity-30" />
-            <p className="text-sm">Belum ada data mesin</p>
+            <p className="text-sm">{searchQuery ? "Tidak ditemukan" : "Belum ada data mesin"}</p>
           </div>
         ) : (
-          /* Grid Status Mesin Kecil Padat */
           <div className="grid gap-2 grid-cols-2 xs:grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6">
-            {machines.map((machine) => {
-              const hasReed = machine.ID_sisir_terpasang && 
-                              machine.ID_sisir_terpasang.trim() !== "" && 
+            {filteredMachines.map((machine) => {
+              const hasReed = machine.ID_sisir_terpasang &&
+                              machine.ID_sisir_terpasang.trim() !== "" &&
                               machine.ID_sisir_terpasang.trim() !== "-";
-
-              const nomorSisirDisplay = (machine as any).Nomor_sisir_Destiny || machine.ID_sisir_terpasang;
+              const nomorSisirDisplay = machine.Nomor_sisir_Destiny || (machine as any)["Nomor sisir Destiny"] || machine.ID_sisir_terpasang;
 
               return (
                 <div
                   key={machine.Nomer_Mesin}
                   onClick={() => handleMachineClick(machine.Nomer_Mesin)}
-                  className={`rounded-xl border p-2 flex flex-col justify-between min-h-[75px] transition-all cursor-pointer hover:scale-[1.03] active:scale-95 duration-200 shadow-sm hover:shadow-md ${
+                  className={`rounded-xl border p-2 flex flex-col justify-between min-h-[90px] transition-all cursor-pointer hover:scale-[1.03] active:scale-95 duration-200 shadow-sm hover:shadow-md ${
                     hasReed ? "border-primary/40 bg-primary/5" : "border-border/50 bg-card opacity-70"
                   }`}
                 >
@@ -183,11 +219,23 @@ export default function DashboardPage() {
                     </span>
                   </div>
 
-                  <div className="mt-2 pt-1 border-t border-border/30 flex flex-col items-start">
+                  <div className="mt-1 pt-1 border-t border-border/30 flex flex-col items-start">
                     <span className="text-[8px] text-muted-foreground uppercase tracking-wider scale-90 origin-left">Sisir</span>
-                    <p className={`font-mono text-[10px] font-semibold tracking-tight truncate ${hasReed ? "text-primary" : "text-muted-foreground/60 italic"}`}>
+                    <p className={`font-mono text-[10px] font-semibold tracking-tight truncate w-full ${hasReed ? "text-primary" : "text-muted-foreground/60 italic"}`}>
                       {hasReed ? nomorSisirDisplay : "Kosong"}
                     </p>
+                    {hasReed && machine.Durasi_Pakai && (
+                      <p className="text-[9px] text-amber-500 flex items-center gap-0.5 mt-0.5">
+                        <Clock className="w-2.5 h-2.5" />
+                        {machine.Durasi_Pakai}
+                      </p>
+                    )}
+                    {hasReed && machine.Posisi_Gedung && (
+                      <p className="text-[9px] text-muted-foreground flex items-center gap-0.5">
+                        <MapPin className="w-2.5 h-2.5" />
+                        {machine.Posisi_Gedung}
+                      </p>
+                    )}
                   </div>
                 </div>
               );
@@ -196,12 +244,9 @@ export default function DashboardPage() {
         )}
       </div>
 
-      {/* ==================== POP-UP MODAL RIWAYAT INTERAKTIF ==================== */}
       {selectedMachine && (
         <div className="fixed inset-0 bg-background/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-card border border-border w-full max-w-lg rounded-2xl shadow-xl overflow-hidden max-h-[85vh] flex flex-col">
-
-            {/* Header Modal */}
             <div className="p-4 border-b border-border flex justify-between items-center bg-muted/30">
               <div>
                 <h3 className="font-bold text-base flex items-center gap-2">
@@ -215,7 +260,6 @@ export default function DashboardPage() {
               </Button>
             </div>
 
-            {/* Konten Modal Log */}
             <div className="p-4 overflow-y-auto space-y-4 flex-1">
               {loadingHistory ? (
                 <div className="flex flex-col py-12 items-center justify-center gap-2">
@@ -229,7 +273,6 @@ export default function DashboardPage() {
                 </div>
               ) : (
                 <>
-                  {/* Blok Pasang */}
                   {historyData.pasang.length > 0 && (
                     <div className="space-y-2">
                       <h4 className="text-xs font-bold text-primary uppercase tracking-wide flex items-center gap-1">
@@ -241,7 +284,7 @@ export default function DashboardPage() {
                             <div className="flex justify-between font-medium">
                               <span className="text-card-foreground">Ukuran: {log.Nomor_sisir_Destiny || "-"}</span>
                               <span className="text-muted-foreground font-mono text-[10px] flex items-center gap-1">
-                                <Calendar className="h-3 w-3" /> {log.Tanggal_Ganti?.split(" ")[0]}
+                                <Calendar className="h-3 w-3" /> {formatDate(log.Tanggal_Ganti)}
                               </span>
                             </div>
                             <div className="flex justify-between text-muted-foreground text-[11px]">
@@ -254,7 +297,6 @@ export default function DashboardPage() {
                     </div>
                   )}
 
-                  {/* Blok Lepas */}
                   {historyData.lepas.length > 0 && (
                     <div className="space-y-2 pt-2">
                       <h4 className="text-xs font-bold text-destructive uppercase tracking-wide flex items-center gap-1">
@@ -266,13 +308,18 @@ export default function DashboardPage() {
                             <div className="flex justify-between font-medium">
                               <span className="text-card-foreground">Ukuran: {log.Nomor_sisir_Destiny || "-"}</span>
                               <span className="text-muted-foreground font-mono text-[10px] flex items-center gap-1">
-                                <Calendar className="h-3 w-3" /> {log.Tanggal_Lepas?.split(" ")[0]}
+                                <Calendar className="h-3 w-3" /> {formatDate(log.Tanggal_Lepas)}
                               </span>
                             </div>
                             <div className="flex justify-between text-muted-foreground text-[11px]">
                               <span>ID: <strong className="font-mono">{log.ID_Sisir}</strong></span>
                               <span>Kondisi: <strong className={log.Kondisi_SIsir?.toLowerCase().includes("rusak") ? "text-destructive" : "text-yellow-500"}>{log.Kondisi_SIsir || "OK"}</strong></span>
                             </div>
+                            {log.Nama_Mekanik && (
+                              <div className="text-muted-foreground text-[10px] flex items-center gap-1">
+                                <User className="h-3 w-3" /> {log.Nama_Mekanik}
+                              </div>
+                            )}
                           </div>
                         ))}
                       </div>
@@ -282,7 +329,6 @@ export default function DashboardPage() {
               )}
             </div>
 
-            {/* Footer Modal */}
             <div className="p-3 border-t border-border bg-muted/10 text-right">
               <Button size="sm" onClick={() => setSelectedMachine(null)}>Tutup</Button>
             </div>

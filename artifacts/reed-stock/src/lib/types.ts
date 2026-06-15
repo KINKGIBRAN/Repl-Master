@@ -4,14 +4,16 @@ export interface LiveTracking {
   SN_Mesin: string | number;
   ID_sisir_terpasang: string;
   Nomor_sisir_Destiny: string;
+  "Nomor sisir Destiny"?: string;
   Tanggal_Pasang: string;
   Durasi_Pakai: string;
+  Posisi_Gedung: string;
 }
 
-// ─── Actual column names returned by the GAS endpoint ─────────────────────────
 export interface MasterStok {
   "ID SISIR": string;
   "Nomor sisir Destiny": string;
+  Nomor_sisir_Destiny?: string;
   "Merk Supplier": string;
   "Posisi Rak": string;
   "Status Saat Ini": string;
