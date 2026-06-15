@@ -110,11 +110,11 @@ export default function StokPage() {
       return;
     }
     try {
-      await addRowToSheet("MASTER_STOK", {
+      await addRowToSheet("HISTORY_LEPAS", {
         ...newReed,
-        "Status Saat Ini": "DI GUDANG",
-        "Mesin Terpasang": "",
-        "Kondisi Sisir": "BAGUS",
+        "Nomor_Mesin": "Dari Supplier",
+        "Nama_Mekanik": "",
+        "Kondisi Sisi": "BAGUS",
       });
       toast.success("Sisir berhasil ditambahkan");
       setNewReed({ "ID SISIR": "", "Nomor sisir Destiny": "", "Merk Supplier": "", "Posisi Rak": "" });
@@ -123,21 +123,31 @@ export default function StokPage() {
       toast.error(err.message);
     }
   };
-
   const handleKirimService = async () => {
     if (!selectedReed) return;
+
     const id = selectedReed["ID SISIR"];
     try {
-      await updateRowInSheet("MASTER_STOK", "ID SISIR", id, { "Status Saat Ini": "SEDANG SERVICE" });
-      await updateRowInSheet("MASTER_STOK", "ID SISIR", id, { "Mesin Terpasang": "-" });
-      toast.success("Sisir dikirim ke supplier / service");
+      const tanggal = new Date().toISOString();
+
+      // MURNI MENGIRIM DATA BARU KE TAB HISTORY_LEPAS
+      // Membiarkan Rumus Array Anda di spreadsheet yang mendeteksi baris ini
+      await addRowToSheet("HISTORY_LEPAS", {
+        Tanggal_Lepas: tanggal,
+        Nomor_Mesin: "Kirim Supplier",
+        ID_Sisir: id,
+        Nomor_sisir_Destiny: selectedReed["Nomor sisir Destiny"] || selectedReed.Nomor_sisir_Destiny || "",
+        Nama_Mekanik: "-", 
+        Kondisi_SIsir: "Service Supplier",
+      });
+
+      toast.success("Sisir berhasil dicatat ke History Lepas untuk Service");
       setIsDetailOpen(false);
       setTimeout(() => loadData(), 1500);
     } catch (err: any) {
-      toast.error(err.message);
+      toast.error(err.message || "Gagal mengirim data service");
     }
   };
-
   const handleTerimaService = async () => {
     if (!selectedReed) return;
     const id = selectedReed["ID SISIR"];

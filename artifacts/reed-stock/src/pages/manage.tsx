@@ -163,6 +163,7 @@ export default function ManagePage() {
     setIsEditOpen(true);
   };
 
+  // ✅ PASANG SISIR — tidak update MASTER_STOK, biarkan ARRAYFORMULA yang handle
   const handleInstallReed = async () => {
     if (!selectedMachine) return;
     if (!installData.ID_sisir_terpasang || !installData.Nama_Mekanik) {
@@ -177,17 +178,8 @@ export default function ManagePage() {
     }
     try {
       const tanggal = new Date().toISOString();
-      await updateRowInSheet("LIVE_TRACKING", "Nomer_Mesin", selectedMachine.Nomer_Mesin, {
-        ID_sisir_terpasang: installData.ID_sisir_terpasang,
-        Nomor_sisir_Destiny: sisirRow?.["Nomor sisir Destiny"] || sisirRow?.Nomor_sisir_Destiny || "",
-        Tanggal_Pasang: tanggal,
-      });
 
-      await updateRowInSheet("MASTER_STOK", "ID SISIR", installData.ID_sisir_terpasang, {
-        "Status Saat Ini": "SEDANG DIPAKAI",
-        "Mesin Terpasang": selectedMachine.Nomer_Mesin,
-      });
-
+      // ✅ Catat ke HISTORY_PASANG
       await addRowToSheet("HISTORY_PASANG", {
         Tanggal_Ganti: tanggal,
         Nomor_Mesin: selectedMachine.Nomer_Mesin,
@@ -196,15 +188,33 @@ export default function ManagePage() {
         Nama_Mekanik: installData.Nama_Mekanik,
       });
 
-      toast.success("Sisir berhasil dipasang");
+      // ✅ Optimistic update state lokal
+      setMachines((prev) =>
+        prev.map((m) =>
+          m.Nomer_Mesin === selectedMachine.Nomer_Mesin
+            ? {
+                ...m,
+                ID_sisir_terpasang: installData.ID_sisir_terpasang,
+                Nomor_sisir_Destiny: sisirRow?.["Nomor sisir Destiny"] || sisirRow?.Nomor_sisir_Destiny || "",
+                Tanggal_Pasang: tanggal,
+                Durasi_Pakai: "",
+              }
+            : m
+        )
+      );
+
+      toast.success("Sisir berhasil dipasang!");
       setInstallData({ ID_sisir_terpasang: "", Nama_Mekanik: "" });
       setIsDetailOpen(false);
-      setTimeout(() => loadData(), 1500);
+      setSelectedMachine(null);
+      await loadData();
     } catch (err: any) {
       toast.error(err.message);
+      await loadData();
     }
   };
 
+  // ✅ LEPAS SISIR — tidak update MASTER_STOK, biarkan ARRAYFORMULA yang handle
   const handleRemoveReed = async () => {
     if (!selectedMachine || !selectedMachine.ID_sisir_terpasang) return;
     if (!removeData.Kondisi_SIsir || !removeData.Nama_Mekanik) {
@@ -214,35 +224,48 @@ export default function ManagePage() {
     try {
       const tanggal = new Date().toISOString();
       const currentSisir = selectedMachine.ID_sisir_terpasang;
-      const cond = removeData.Kondisi_SIsir.toUpperCase();
-      const newStatus = cond === "BAIK" ? "DI GUDANG" : "RUSAK";
+      const currentMesin = selectedMachine.Nomer_Mesin;
+      const currentDestiny =
+        selectedMachine.Nomor_sisir_Destiny ||
+        (selectedMachine as any)["Nomor sisir Destiny"] || "";
 
-      await updateRowInSheet("LIVE_TRACKING", "Nomer_Mesin", selectedMachine.Nomer_Mesin, {
-        ID_sisir_terpasang: "-",
-        Nomor_sisir_Destiny: "-",
-        Tanggal_Pasang: "-",
-        Durasi_Pakai: "-",
-      });
+      // ✅ Optimistic update — UI langsung berubah
+      setMachines((prev) =>
+        prev.map((m) =>
+          m.Nomer_Mesin === currentMesin
+            ? { ...m, ID_sisir_terpasang: "-", Nomor_sisir_Destiny: "-", Tanggal_Pasang: "-", Durasi_Pakai: "-" }
+            : m
+        )
+      );
 
-      await updateRowInSheet("MASTER_STOK", "ID SISIR", currentSisir, { "Status Saat Ini": newStatus });
-      await updateRowInSheet("MASTER_STOK", "ID SISIR", currentSisir, { "Kondisi Sisir": cond === "BAIK" ? "BAGUS" : "RUSAK" });
-      await updateRowInSheet("MASTER_STOK", "ID SISIR", currentSisir, { "Mesin Terpasang": "-" });
-
-      await addRowToSheet("HISTORY_LEPAS", {
-        Tanggal_Lepas: tanggal,
-        Nomor_Mesin: selectedMachine.Nomer_Mesin,
-        ID_Sisir: currentSisir,
-        Nomor_sisir_Destiny: selectedMachine.Nomor_sisir_Destiny || (selectedMachine as any)["Nomor sisir Destiny"] || "",
-        Nama_Mekanik: removeData.Nama_Mekanik,
-        Kondisi_SIsir: removeData.Kondisi_SIsir,
-      });
-
-      toast.success("Sisir berhasil dilepas");
-      setRemoveData({ Kondisi_SIsir: "", Nama_Mekanik: "" });
+      // ✅ Tutup modal segera
       setIsDetailOpen(false);
-      setTimeout(() => loadData(), 1500);
+      setSelectedMachine(null);
+      setRemoveData({ Kondisi_SIsir: "", Nama_Mekanik: "" });
+
+      // ✅ Update LIVE_TRACKING saja (MASTER_STOK dihandle ARRAYFORMULA)
+      await Promise.all([
+        updateRowInSheet("LIVE_TRACKING", "Nomer_Mesin", currentMesin, {
+          ID_sisir_terpasang: "-",
+          Nomor_sisir_Destiny: "-",
+          Tanggal_Pasang: "-",
+          Durasi_Pakai: "-",
+        }),
+        addRowToSheet("HISTORY_LEPAS", {
+          Tanggal_Lepas: tanggal,
+          Nomor_Mesin: currentMesin,
+          ID_Sisir: currentSisir,
+          Nomor_sisir_Destiny: currentDestiny,
+          Nama_Mekanik: removeData.Nama_Mekanik,
+          Kondisi_SIsir: removeData.Kondisi_SIsir,
+        }),
+      ]);
+
+      toast.success("Sisir berhasil dilepas!");
+      await loadData();
     } catch (err: any) {
-      toast.error(err.message);
+      toast.error(`Gagal melepas sisir: ${err.message}`);
+      await loadData();
     }
   };
 
@@ -501,6 +524,7 @@ export default function ManagePage() {
                               <SelectContent>
                                 <SelectItem value="BAIK">Baik → Kembali ke Gudang</SelectItem>
                                 <SelectItem value="RUSAK">Rusak</SelectItem>
+                                <SelectItem value="SERVICE SUPPPLIER">Service Supplier</SelectItem>
                               </SelectContent>
                             </Select>
                           </div>
