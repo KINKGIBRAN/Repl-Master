@@ -24,13 +24,14 @@ const formatDate = (str: string): string => {
   }
 };
 
-const getDisplayStatus = (raw: string): string => {
-  const s = (raw || "").trim().toUpperCase();
-  if (s.includes("GUDANG")) return "Gudang";
-  if (s.includes("DIPAKAI") || s.includes("PAKAI")) return "Dipakai";
-  if (s.includes("RUSAK")) return "Rusak";
-  if (s.includes("SERVICE") || s.includes("REPAIR") || s.includes("SUPPLIER")) return "Service";
-  return raw || "-";
+const getEffectiveStatus = (item: MasterStok): string => {
+  const status = (item["Status Saat Ini"] || "").trim().toUpperCase();
+  const kondisi = (item["Kondisi Sisir"] || "").trim().toUpperCase();
+  if (status.includes("DIPAKAI") || status.includes("PAKAI")) return "Dipakai";
+  if (status.includes("SERVICE") || status.includes("REPAIR") || status.includes("SUPPLIER")) return "Service";
+  if (status.includes("RUSAK") || kondisi.includes("RUSAK")) return "Rusak";
+  if (status.includes("GUDANG")) return "Gudang";
+  return status || "-";
 };
 
 type FilterKey = "Semua" | "Gudang" | "Dipakai" | "Rusak" | "Service";
@@ -175,14 +176,14 @@ export default function StokPage() {
 
   const counts: Record<FilterKey, number> = {
     Semua: stok.length,
-    Gudang: stok.filter((s) => getDisplayStatus(s["Status Saat Ini"]) === "Gudang").length,
-    Dipakai: stok.filter((s) => getDisplayStatus(s["Status Saat Ini"]) === "Dipakai").length,
-    Rusak: stok.filter((s) => getDisplayStatus(s["Status Saat Ini"]) === "Rusak").length,
-    Service: stok.filter((s) => getDisplayStatus(s["Status Saat Ini"]) === "Service").length,
+    Gudang: stok.filter((s) => getEffectiveStatus(s) === "Gudang").length,
+    Dipakai: stok.filter((s) => getEffectiveStatus(s) === "Dipakai").length,
+    Rusak: stok.filter((s) => getEffectiveStatus(s) === "Rusak").length,
+    Service: stok.filter((s) => getEffectiveStatus(s) === "Service").length,
   };
 
   const filteredStok = (() => {
-    let list = filter === "Semua" ? stok : stok.filter((s) => getDisplayStatus(s["Status Saat Ini"]) === filter);
+    let list = filter === "Semua" ? stok : stok.filter((s) => getEffectiveStatus(s) === filter);
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
       list = list.filter(
@@ -198,8 +199,8 @@ export default function StokPage() {
 
   const reedHistory = historyData.filter((h) => h.ID_Sisir === selectedReed?.["ID SISIR"]);
 
-  const statusBadge = (raw: string) => {
-    const label = getDisplayStatus(raw);
+  const statusBadge = (item: MasterStok) => {
+    const label = getEffectiveStatus(item);
     const styles: Record<string, string> = {
       Gudang: "bg-blue-500/20 text-blue-400 border-blue-500/40",
       Dipakai: "bg-primary/20 text-primary border-primary/40",
@@ -213,7 +214,7 @@ export default function StokPage() {
     );
   };
 
-  const selectedStatus = selectedReed ? getDisplayStatus(selectedReed["Status Saat Ini"]) : "";
+  const selectedStatus = selectedReed ? getEffectiveStatus(selectedReed) : "";
   const isLocked = selectedStatus === "Dipakai";
   const isRusak = selectedStatus === "Rusak";
   const isService = selectedStatus === "Service";
@@ -309,7 +310,7 @@ export default function StokPage() {
       ) : (
         <div className="grid gap-2">
           {filteredStok.map((item) => {
-            const disp = getDisplayStatus(item["Status Saat Ini"]);
+            const disp = getEffectiveStatus(item);
             const locked = disp === "Dipakai";
             return (
               <div
@@ -325,7 +326,7 @@ export default function StokPage() {
                   <div className="text-sm text-muted-foreground truncate">{item["Nomor sisir Destiny"]} · {item["Merk Supplier"]}</div>
                   {item["Posisi Rak"] && <div className="text-xs text-muted-foreground/60">{item["Posisi Rak"]}</div>}
                 </div>
-                {statusBadge(item["Status Saat Ini"])}
+                {statusBadge(item)}
               </div>
             );
           })}
@@ -340,7 +341,7 @@ export default function StokPage() {
               <DialogHeader>
                 <div className="flex justify-between items-start pr-6">
                   <DialogTitle className="font-mono">{selectedReed["ID SISIR"]}</DialogTitle>
-                  {statusBadge(selectedReed["Status Saat Ini"])}
+                  {statusBadge(selectedReed)}
                 </div>
               </DialogHeader>
 
