@@ -218,17 +218,15 @@ export default function ManagePage() {
       const newStatus = cond === "BAIK" ? "DI GUDANG" : "RUSAK";
 
       await updateRowInSheet("LIVE_TRACKING", "Nomer_Mesin", selectedMachine.Nomer_Mesin, {
-        ID_sisir_terpasang: "",
-        Nomor_sisir_Destiny: "",
-        Tanggal_Pasang: "",
-        Durasi_Pakai: "",
+        ID_sisir_terpasang: "-",
+        Nomor_sisir_Destiny: "-",
+        Tanggal_Pasang: "-",
+        Durasi_Pakai: "-",
       });
 
-      await updateRowInSheet("MASTER_STOK", "ID SISIR", currentSisir, {
-        "Status Saat Ini": newStatus,
-        "Kondisi Sisir": cond === "BAIK" ? "BAGUS" : "RUSAK",
-        "Mesin Terpasang": "",
-      });
+      await updateRowInSheet("MASTER_STOK", "ID SISIR", currentSisir, { "Status Saat Ini": newStatus });
+      await updateRowInSheet("MASTER_STOK", "ID SISIR", currentSisir, { "Kondisi Sisir": cond === "BAIK" ? "BAGUS" : "RUSAK" });
+      await updateRowInSheet("MASTER_STOK", "ID SISIR", currentSisir, { "Mesin Terpasang": "-" });
 
       await addRowToSheet("HISTORY_LEPAS", {
         Tanggal_Lepas: tanggal,

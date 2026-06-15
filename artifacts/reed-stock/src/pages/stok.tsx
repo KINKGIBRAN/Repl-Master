@@ -126,11 +126,10 @@ export default function StokPage() {
 
   const handleKirimService = async () => {
     if (!selectedReed) return;
+    const id = selectedReed["ID SISIR"];
     try {
-      await updateRowInSheet("MASTER_STOK", "ID SISIR", selectedReed["ID SISIR"], {
-        "Status Saat Ini": "SEDANG SERVICE",
-        "Mesin Terpasang": "",
-      });
+      await updateRowInSheet("MASTER_STOK", "ID SISIR", id, { "Status Saat Ini": "SEDANG SERVICE" });
+      await updateRowInSheet("MASTER_STOK", "ID SISIR", id, { "Mesin Terpasang": "-" });
       toast.success("Sisir dikirim ke supplier / service");
       setIsDetailOpen(false);
       setTimeout(() => loadData(), 1500);
@@ -141,12 +140,11 @@ export default function StokPage() {
 
   const handleTerimaService = async () => {
     if (!selectedReed) return;
+    const id = selectedReed["ID SISIR"];
     try {
-      await updateRowInSheet("MASTER_STOK", "ID SISIR", selectedReed["ID SISIR"], {
-        "Status Saat Ini": "DI GUDANG",
-        "Kondisi Sisir": "BAGUS",
-        "Mesin Terpasang": "",
-      });
+      await updateRowInSheet("MASTER_STOK", "ID SISIR", id, { "Status Saat Ini": "DI GUDANG" });
+      await updateRowInSheet("MASTER_STOK", "ID SISIR", id, { "Kondisi Sisir": "BAGUS" });
+      await updateRowInSheet("MASTER_STOK", "ID SISIR", id, { "Mesin Terpasang": "-" });
       toast.success("Sisir diterima kembali — masuk stok gudang");
       setIsDetailOpen(false);
       setTimeout(() => loadData(), 1500);
