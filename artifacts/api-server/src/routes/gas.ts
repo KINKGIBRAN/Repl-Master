@@ -58,7 +58,7 @@ router.delete("/gas", async (req: Request, res: Response) => {
   }
 });
 
-// ─── POST /api/auth/login — cek username & password ke sheet Users ────────────
+// ─── POST /api/auth/login — baca dari Replit Secret USERS ────────────────────
 router.post("/auth/login", async (req: Request, res: Response) => {
   const { username, password } = req.body as { username?: string; password?: string };
 
@@ -67,25 +67,22 @@ router.post("/auth/login", async (req: Request, res: Response) => {
   }
 
   try {
-    // Ambil data sheet Users dari GAS
-    const url = `${GAS_URL}?sheet=Users`;
-    const gasRes = await fetch(url);
-    if (!gasRes.ok) {
-      return res.status(502).json({ ok: false, message: "Gagal mengambil data user" });
+    const usersJson = process.env.USERS;
+    if (!usersJson) {
+      return res.status(500).json({ ok: false, message: "Konfigurasi user tidak ditemukan" });
     }
 
     const users: Array<{
-      "USER NAME": string;
-      PASSWORD: string | number;
-      ROLE: string;
-      NAMA: string;
-    }> = await gasRes.json();
+      username: string;
+      password: string;
+      role: string;
+      nama: string;
+    }> = JSON.parse(usersJson);
 
-    // Cari user yang cocok (case-insensitive username)
     const found = users.find(
       (u) =>
-        String(u["USER NAME"]).trim().toUpperCase() === username.trim().toUpperCase() &&
-        String(u["PASSWORD"]).trim() === String(password).trim()
+        u.username.trim().toUpperCase() === username.trim().toUpperCase() &&
+        u.password.trim() === String(password).trim()
     );
 
     if (!found) {
@@ -95,9 +92,9 @@ router.post("/auth/login", async (req: Request, res: Response) => {
     return res.json({
       ok: true,
       user: {
-        username: String(found["USER NAME"]).trim(),
-        nama: String(found["NAMA"]).trim(),
-        role: String(found["ROLE"]).trim(),
+        username: found.username,
+        nama: found.nama,
+        role: found.role,
       },
     });
   } catch (err: any) {
