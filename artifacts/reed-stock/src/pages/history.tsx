@@ -3,13 +3,19 @@ import { fetchMultipleSheets } from "@/lib/api";
 import { HistoryPasang, HistoryLepas, CombinedHistory } from "@/lib/types";
 import { Spinner } from "@/components/ui/spinner";
 import { toast } from "sonner";
-import { ArrowRightCircle, ArrowDownCircle, Wrench, AlertCircle } from "lucide-react";
+import { ArrowRightCircle, ArrowDownCircle, Wrench, AlertCircle, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+
+type FilterKey = "Semua" | "PASANG" | "LEPAS";
 
 export default function HistoryPage() {
   const [historyData, setHistoryData] = useState<CombinedHistory[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [filter, setFilter] = useState<FilterKey>("Semua");
+  const [searchQuery, setSearchQuery] = useState("");
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -49,6 +55,34 @@ export default function HistoryPage() {
   }, []);
 
   useEffect(() => { loadData(); }, [loadData]);
+
+  // ─── Filter + Search ──────────────────────────────────────────────────────
+  const filteredHistory = (() => {
+    let list = historyData;
+
+    // Filter by type
+    if (filter === "PASANG") list = list.filter((h) => h.type === "PASANG");
+    if (filter === "LEPAS")  list = list.filter((h) => h.type === "LEPAS");
+
+    // Search by nomor mesin atau nomor sisir
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      list = list.filter(
+        (h) =>
+          h.Nomor_Mesin?.toLowerCase().includes(q) ||
+          h.ID_Sisir?.toLowerCase().includes(q) ||
+          h.Nomor_sisir_Destiny?.toLowerCase().includes(q)
+      );
+    }
+
+    return list;
+  })();
+
+  const counts: Record<FilterKey, number> = {
+    Semua: historyData.length,
+    PASANG: historyData.filter((h) => h.type === "PASANG").length,
+    LEPAS:  historyData.filter((h) => h.type === "LEPAS").length,
+  };
 
   const getBadge = (item: CombinedHistory) => {
     if (item.type === "PASANG") {
@@ -90,13 +124,45 @@ export default function HistoryPage() {
     <div className="p-4 space-y-4 pb-24">
       <h1 className="text-2xl font-bold tracking-tight">Activity Log</h1>
 
-      {historyData.length === 0 ? (
+      {/* Search Bar */}
+      <div className="relative">
+        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground/70" />
+        <Input
+          type="text"
+          placeholder="Cari nomor mesin atau nomor sisir..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          className="pl-9 pr-9 h-10 rounded-xl"
+        />
+        {searchQuery && (
+          <button
+            onClick={() => setSearchQuery("")}
+            className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground text-xs"
+          >
+            ✕
+          </button>
+        )}
+      </div>
+
+      {/* Filter Tabs */}
+      <Tabs value={filter} onValueChange={(v) => setFilter(v as FilterKey)}>
+        <TabsList className="w-full grid grid-cols-3 h-auto">
+          {(["Semua", "PASANG", "LEPAS"] as FilterKey[]).map((tab) => (
+            <TabsTrigger key={tab} value={tab} className="flex-col gap-0 py-1.5 text-xs">
+              <span>{tab}</span>
+              <span className="text-[10px] font-bold text-primary">{counts[tab]}</span>
+            </TabsTrigger>
+          ))}
+        </TabsList>
+      </Tabs>
+
+      {filteredHistory.length === 0 ? (
         <div className="text-center py-12 text-muted-foreground bg-card rounded-lg border border-border">
-          Belum ada aktivitas tercatat.
+          {searchQuery ? "Tidak ditemukan." : "Belum ada aktivitas tercatat."}
         </div>
       ) : (
         <div className="space-y-3">
-          {historyData.map((item, i) => (
+          {filteredHistory.map((item, i) => (
             <div
               key={i}
               className="bg-card border border-border rounded-xl p-4 flex items-start gap-3"

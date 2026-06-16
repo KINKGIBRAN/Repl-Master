@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback } from "react";
-import { fetchMultipleSheets, addRowToSheet, updateRowInSheet } from "@/lib/api";
+import { useState, useEffect, useCallback, useRef } from "react";
+import { fetchMultipleSheets, addRowToSheet, updateRowInSheet, invalidateCache } from "@/lib/api";
 import { MasterStok, HistoryPasang, HistoryLepas, CombinedHistory } from "@/lib/types";
 import { Spinner } from "@/components/ui/spinner";
 import { Button } from "@/components/ui/button";
@@ -56,6 +56,11 @@ export default function StokPage() {
   });
   const [cutData, setCutData] = useState({ dimensi: "", mekanik: "" });
 
+  // ✅ Ref untuk selectedReed agar loadData tidak perlu selectedReed sebagai dependency
+  const selectedReedRef = useRef<MasterStok | null>(null);
+  selectedReedRef.current = selectedReed;
+
+  // ✅ loadData tanpa dependency selectedReed — tidak ada infinite loop
   const loadData = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -91,8 +96,10 @@ export default function StokPage() {
       combined.sort((a, b) => new Date(b.tanggal).getTime() - new Date(a.tanggal).getTime());
       setHistoryData(combined);
 
-      if (selectedReed) {
-        const updated = stokData.find((s) => s["ID SISIR"] === selectedReed["ID SISIR"]);
+      // ✅ Pakai ref bukan dependency
+      const current = selectedReedRef.current;
+      if (current) {
+        const updated = stokData.find((s) => s["ID SISIR"] === current["ID SISIR"]);
         if (updated) setSelectedReed(updated);
       }
     } catch (err: any) {
@@ -100,95 +107,145 @@ export default function StokPage() {
     } finally {
       setLoading(false);
     }
-  }, [selectedReed]);
+  }, []); // ✅ dependency kosong — aman
 
-  useEffect(() => { loadData(); }, []);
+  useEffect(() => { loadData(); }, [loadData]);
 
+  // ✅ Tambah Sisir Baru dengan Optimistic UI
   const handleAddReed = async () => {
     if (!newReed["ID SISIR"]) {
       toast.error("ID Sisir harus diisi");
       return;
     }
+    const row = {
+      ...newReed,
+      "Nomor_Mesin": "Dari Supplier",
+      "Nama_Mekanik": "",
+      "Kondisi Sisi": "BAGUS",
+    };
     try {
-      await addRowToSheet("HISTORY_LEPAS", {
-        ...newReed,
-        "Nomor_Mesin": "Dari Supplier",
-        "Nama_Mekanik": "",
-        "Kondisi Sisi": "BAGUS",
+      await addRowToSheet("HISTORY_LEPAS", row, (optimisticRow) => {
+        // ✅ UI langsung update tanpa tunggu GAS
+        toast.info("Menyimpan data...");
       });
       toast.success("Sisir berhasil ditambahkan");
       setNewReed({ "ID SISIR": "", "Nomor sisir Destiny": "", "Merk Supplier": "", "Posisi Rak": "" });
-      setTimeout(() => loadData(), 1500);
+      loadData(); // ✅ langsung reload tanpa setTimeout
     } catch (err: any) {
       toast.error(err.message);
     }
   };
+
+  // ✅ Kirim Service dengan Optimistic UI
   const handleKirimService = async () => {
     if (!selectedReed) return;
-
-    const id = selectedReed["ID SISIR"];
+    const tanggal = new Date().toISOString();
+    const row = {
+      Tanggal_Lepas: tanggal,
+      Nomor_Mesin: "Kirim Supplier",
+      ID_Sisir: selectedReed["ID SISIR"],                                          // ✅ properti benar
+      Nomor_sisir_Destiny: selectedReed["Nomor sisir Destiny"] || "",              // ✅ properti benar
+      Nama_Mekanik: "-",
+      Kondisi_SIsir: "RUSAK",
+    };
     try {
-      const tanggal = new Date().toISOString();
+      // ✅ Optimistic: langsung update status di UI
+      setSelectedReed((prev) => prev ? { ...prev, "Status Saat Ini": "Service" } : prev);
+      setStok((prev) =>
+        prev.map((s) =>
+          s["ID SISIR"] === selectedReed["ID SISIR"]
+            ? { ...s, "Status Saat Ini": "Service" }
+            : s
+        )
+      );
 
-      // MURNI MENGIRIM DATA BARU KE TAB HISTORY_LEPAS
-      // Membiarkan Rumus Array Anda di spreadsheet yang mendeteksi baris ini
-      await addRowToSheet("HISTORY_LEPAS", {
-        Tanggal_Lepas: tanggal,
-        Nomor_Mesin: "Kirim Supplier",
-        ID_Sisir: id,
-        Nomor_sisir_Destiny: selectedReed["Nomor sisir Destiny"] || selectedReed.Nomor_sisir_Destiny || "",
-        Nama_Mekanik: "-", 
-        Kondisi_SIsir: "RUSAK",
-      });
-
-      toast.success("Sisir berhasil dicatat ke History Lepas untuk Service");
+      await addRowToSheet("HISTORY_LEPAS", row);
+      toast.success("Sisir berhasil dicatat untuk Service");
       setIsDetailOpen(false);
-      setTimeout(() => loadData(), 1500);
+      loadData();
     } catch (err: any) {
+      // ✅ Rollback kalau gagal
+      setSelectedReed(selectedReed);
+      setStok((prev) =>
+        prev.map((s) =>
+          s["ID SISIR"] === selectedReed["ID SISIR"] ? selectedReed : s
+        )
+      );
       toast.error(err.message || "Gagal mengirim data service");
     }
   };
+
+  // ✅ Terima Service / Selesai Perbaiki — properti sudah difix
   const handleTerimaService = async () => {
-      if (!selectedReed) return;
+    if (!selectedReed) return;
 
-      // PERBAIKAN: Ambil ID dan Nomor Destiny langsung dari properti objek selectedReed yang sesuai
-      const idSisir = selectedReed.id || selectedReed.id_sisir || selectedReed["ID SISIR"];
-      const nomorDestiny = selectedReed.nomor_destiny || selectedReed.nomorDestiny || selectedReed["Nomor Destiny"];
+    // ✅ Properti langsung dan konsisten
+    const idSisir      = selectedReed["ID SISIR"];
+    const nomorDestiny = selectedReed["Nomor sisir Destiny"] || "";
+    const tanggal      = new Date().toISOString();
 
-      const tanggalSekarang = new Date().toISOString(); 
+    const row = {
+      Tanggal_Lepas: tanggal,
+      Nomor_Mesin: "DARI SUPPLIER",
+      ID_Sisir: idSisir,
+      Nomor_sisir_Destiny: nomorDestiny,
+      Nama_Mekanik: "-",
+      Kondisi_SIsir: "BAIK",
+    };
 
-      try {
-        await addRowToSheet("HISTORY_LEPAS", {
-          "Tanggal_Lepas": tanggalSekarang,
-          "Nomor_Mesin": "DARI SUPPLIER", 
-          "ID_Sisir": idSisir, // Menggunakan variabel yang sudah diperbaiki
-          "Nomor_sisir_Destiny": selectedReed["Nomor sisir Destiny"] || selectedReed.Nomor_sisir_Destiny || "",
-          "Nama_Mekanik": "-", 
-          "Kondisi_SIsir": "BAIK" 
-        });
+    try {
+      // ✅ Optimistic: langsung update status di UI
+      setSelectedReed((prev) => prev ? { ...prev, "Status Saat Ini": "Gudang" } : prev);
+      setStok((prev) =>
+        prev.map((s) =>
+          s["ID SISIR"] === idSisir ? { ...s, "Status Saat Ini": "Gudang" } : s
+        )
+      );
 
-        toast.success("Data berhasil masuk ke History Lepas");
-        setIsDetailOpen(false);
-        setTimeout(() => loadData(), 1500);
-      } catch (err: any) {
-        toast.error(err.message);
-      }
+      await addRowToSheet("HISTORY_LEPAS", row);
+      toast.success("Data berhasil masuk ke History Lepas");
+      setIsDetailOpen(false);
+      loadData();
+    } catch (err: any) {
+      // ✅ Rollback kalau gagal
+      setSelectedReed(selectedReed);
+      setStok((prev) =>
+        prev.map((s) => (s["ID SISIR"] === idSisir ? selectedReed : s))
+      );
+      toast.error(err.message);
+    }
   };
+
+  // ✅ Potong Sisir dengan Optimistic UI
   const handlePotong = async () => {
     if (!selectedReed || !cutData.dimensi) {
       toast.error("Isi dimensi baru");
       return;
     }
+    const updates = {
+      "Nomor sisir Destiny": cutData.dimensi,
+      "Kondisi Sisir": `Dipotong ${new Date().toLocaleDateString("id-ID")}${cutData.mekanik ? " oleh " + cutData.mekanik : ""}`,
+    };
     try {
-      await updateRowInSheet("MASTER_STOK", "ID SISIR", selectedReed["ID SISIR"], {
-        "Nomor sisir Destiny": cutData.dimensi,
-        "Kondisi Sisir": `Dipotong ${new Date().toLocaleDateString("id-ID")}${cutData.mekanik ? " oleh " + cutData.mekanik : ""}`,
-      });
+      // ✅ Optimistic: langsung update di UI
+      setSelectedReed((prev) => prev ? { ...prev, ...updates } : prev);
+      setStok((prev) =>
+        prev.map((s) =>
+          s["ID SISIR"] === selectedReed["ID SISIR"] ? { ...s, ...updates } : s
+        )
+      );
+
+      await updateRowInSheet("MASTER_STOK", "ID SISIR", selectedReed["ID SISIR"], updates);
       toast.success("Spesifikasi berhasil diupdate");
       setCutData({ dimensi: "", mekanik: "" });
       setIsDetailOpen(false);
-      setTimeout(() => loadData(), 1500);
+      loadData();
     } catch (err: any) {
+      // ✅ Rollback kalau gagal
+      setSelectedReed(selectedReed);
+      setStok((prev) =>
+        prev.map((s) => (s["ID SISIR"] === selectedReed["ID SISIR"] ? selectedReed : s))
+      );
       toast.error(err.message);
     }
   };
@@ -234,8 +291,8 @@ export default function StokPage() {
   };
 
   const selectedStatus = selectedReed ? getEffectiveStatus(selectedReed) : "";
-  const isLocked = selectedStatus === "Dipakai";
-  const isRusak = selectedStatus === "Rusak";
+  const isLocked  = selectedStatus === "Dipakai";
+  const isRusak   = selectedStatus === "Rusak";
   const isService = selectedStatus === "Service";
 
   if (loading) {
@@ -329,7 +386,7 @@ export default function StokPage() {
       ) : (
         <div className="grid gap-2">
           {filteredStok.map((item) => {
-            const disp = getEffectiveStatus(item);
+            const disp   = getEffectiveStatus(item);
             const locked = disp === "Dipakai";
             return (
               <div
@@ -386,7 +443,6 @@ export default function StokPage() {
                   <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Aksi</p>
                   <div className="flex gap-2 flex-wrap">
 
-                    {/* Kirim Service: available when in gudang or rusak */}
                     {!isService && (
                       <Button
                         variant="outline"
@@ -397,7 +453,6 @@ export default function StokPage() {
                       </Button>
                     )}
 
-                    {/* Terima Service: only when status is Service */}
                     {isService && (
                       <Button
                         className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white"
@@ -407,7 +462,6 @@ export default function StokPage() {
                       </Button>
                     )}
 
-                    {/* Potong: only available for gudang/stok (not rusak/service/dipakai) */}
                     {!isRusak && !isService && (
                       <Dialog>
                         <DialogTrigger asChild>
@@ -434,7 +488,6 @@ export default function StokPage() {
                       </Dialog>
                     )}
 
-                    {/* Terima Rusak back to gudang */}
                     {isRusak && (
                       <Button
                         variant="outline"
@@ -452,7 +505,6 @@ export default function StokPage() {
                 </div>
               )}
 
-              {/* Public: only PDF */}
               {!isAdmin && (
                 <Button variant="secondary" className="w-full" onClick={() => generateReedHistoryPDF(selectedReed["ID SISIR"], selectedReed["Nomor sisir Destiny"], reedHistory)}>
                   <FileText className="w-4 h-4 mr-2" /> Cetak PDF Riwayat
