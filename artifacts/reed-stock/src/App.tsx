@@ -9,31 +9,12 @@ import StokPage from "@/pages/stok";
 import HistoryPage from "@/pages/history";
 import { BottomNav } from "@/components/layout/BottomNav";
 import { AuthProvider, useAuth } from "@/lib/auth";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
-import { Lock, Unlock, Factory } from "lucide-react";
+import { LoginDialog } from "@/components/LoginDialog";
+import { Lock, Unlock, Factory, User } from "lucide-react";
 
 function AdminBar() {
-  const { isAdmin, login, logout } = useAuth();
+  const { isAdmin, currentUser, logout } = useAuth();
   const [open, setOpen] = useState(false);
-  const [pin, setPin] = useState("");
-  const [error, setError] = useState("");
-  const [loading, setLoading] = useState(false);
-
-  const handleLogin = async () => {
-    if (!pin) return;
-    setLoading(true);
-    setError("");
-    const ok = await login(pin);
-    setLoading(false);
-    if (ok) {
-      setOpen(false);
-      setPin("");
-    } else {
-      setError("PIN salah. Coba lagi.");
-    }
-  };
 
   return (
     <>
@@ -43,13 +24,20 @@ function AdminBar() {
           <span className="hidden xs:inline">PT. TRIPUTRA TEXTILE</span>
           <span className="xs:hidden">TRIPUTRA</span>
         </div>
-        {isAdmin ? (
+
+        {isAdmin && currentUser ? (
           <div className="flex items-center gap-2">
+            {/* Nama & role user yang sedang login */}
             <div className="flex items-center gap-1 text-xs font-semibold text-emerald-500">
               <Unlock className="h-3.5 w-3.5" />
-              <span>ADMIN MODE</span>
+              <User className="h-3 w-3" />
+              <span>{currentUser.nama}</span>
+              <span className="text-emerald-400/60">· {currentUser.role}</span>
             </div>
-            <button onClick={logout} className="text-[10px] text-muted-foreground hover:text-foreground px-1.5 py-0.5 rounded border border-border/60">
+            <button
+              onClick={logout}
+              className="text-[10px] text-muted-foreground hover:text-foreground px-1.5 py-0.5 rounded border border-border/60"
+            >
               Logout
             </button>
           </div>
@@ -64,33 +52,7 @@ function AdminBar() {
         )}
       </div>
 
-      <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Lock className="h-4 w-4 text-primary" /> Login Admin
-            </DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4 py-2">
-            <p className="text-sm text-muted-foreground">Masukkan PIN untuk mengakses mode edit.</p>
-            <Input
-              type="password"
-              placeholder="PIN Admin"
-              value={pin}
-              onChange={(e) => { setPin(e.target.value); setError(""); }}
-              onKeyDown={(e) => e.key === "Enter" && handleLogin()}
-              autoFocus
-            />
-            {error && <p className="text-xs text-destructive">{error}</p>}
-          </div>
-          <div className="flex gap-2">
-            <Button variant="outline" onClick={() => { setOpen(false); setPin(""); }} className="flex-1">Batal</Button>
-            <Button onClick={handleLogin} disabled={loading || !pin} className="flex-1">
-              {loading ? "Memverifikasi..." : "Masuk"}
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
+      <LoginDialog open={open} onClose={() => setOpen(false)} />
     </>
   );
 }

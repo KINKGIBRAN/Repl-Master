@@ -7,8 +7,17 @@ import { AlertCircle, Server, CheckCircle2, XCircle, PackageX, Calendar, Clock, 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
-const statusLike = (value: string, ...keywords: string[]) =>
-  keywords.some((k) => value?.trim().toLowerCase().includes(k.toLowerCase()));
+// ✅ Disamakan dengan getEffectiveStatus di stok.tsx
+// agar Dashboard dan Stok selalu konsisten menghitung status sisir
+const getEffectiveStatus = (item: MasterStok): string => {
+  const status = (item["Status Saat Ini"] || "").trim().toUpperCase();
+  const kondisi = (item["Kondisi Sisir"] || "").trim().toUpperCase();
+  if (status.includes("DIPAKAI") || status.includes("PAKAI")) return "Dipakai";
+  if (status.includes("SERVICE") || status.includes("REPAIR") || status.includes("SUPPLIER")) return "Service";
+  if (status.includes("RUSAK") || kondisi.includes("RUSAK")) return "Rusak";
+  if (status.includes("GUDANG")) return "Gudang";
+  return status || "-";
+};
 
 const formatDate = (str: string): string => {
   if (!str || str === "-") return "-";
@@ -59,12 +68,9 @@ export default function DashboardPage() {
       ).length;
       const mesinKosong = totalMesin - mesinAktif;
 
-      const stokGudang = masterStok.filter((s) =>
-        statusLike(s["Status Saat Ini"], "gudang")
-      ).length;
-      const sisirRusak = masterStok.filter((s) =>
-        statusLike(s["Status Saat Ini"], "rusak")
-      ).length;
+      // ✅ Pakai getEffectiveStatus yang sama dengan stok.tsx — tidak ada lagi miss antara Dashboard & Stok
+      const stokGudang = masterStok.filter((s) => getEffectiveStatus(s) === "Gudang").length;
+      const sisirRusak = masterStok.filter((s) => getEffectiveStatus(s) === "Rusak").length;
 
       setMetrics({ mesinAktif, mesinKosong, stokGudang, sisirRusak });
       setMachines(liveTracking);

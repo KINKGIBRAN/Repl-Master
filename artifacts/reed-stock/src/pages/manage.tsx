@@ -3,13 +3,16 @@ import { fetchMultipleSheets, addRowToSheet, updateRowInSheet } from "@/lib/api"
 import { LiveTracking, MasterStok, HistoryPasang, HistoryLepas, CombinedHistory } from "@/lib/types";
 import { Spinner } from "@/components/ui/spinner";
 import { Button } from "@/components/ui/button";
-import { Plus, History, FileText, ArrowRightCircle, ArrowDownCircle, AlertCircle, Search, Clock, MapPin, Pencil, Lock } from "lucide-react";
+import { Plus, History, FileText, ArrowRightCircle, ArrowDownCircle, AlertCircle, Search, Clock, MapPin, Pencil, Lock, Check, ChevronsUpDown } from "lucide-react";
 import { toast } from "sonner";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { generateMachineHistoryPDF } from "@/lib/pdf";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
+import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth";
 
 const formatDate = (str: string): string => {
@@ -42,6 +45,70 @@ const isGudang = (s: MasterStok) => {
   return status.includes("gudang") && !kondisi.includes("rusak");
 };
 
+// ─── Searchable Reed Combobox ──────────────────────────────────────────────
+// ✅ Pengganti dropdown Select biasa — user bisa mengetik ID Sisir atau Nomor Destiny
+function ReedCombobox({
+  reeds,
+  value,
+  onChange,
+}: {
+  reeds: MasterStok[];
+  value: string;
+  onChange: (id: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const selected = reeds.find((r) => r["ID SISIR"] === value);
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          variant="outline"
+          role="combobox"
+          aria-expanded={open}
+          className="w-full justify-between font-normal"
+        >
+          {selected
+            ? `${selected["Nomor sisir Destiny"] || selected.Nomor_sisir_Destiny || "-"} (${selected["ID SISIR"]})`
+            : "Ketik ID Sisir atau Nomor Destiny..."}
+          <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
+        <Command>
+          <CommandInput placeholder="Cari ID Sisir / Nomor Destiny..." />
+          <CommandList>
+            <CommandEmpty>Tidak ada sisir tersedia di gudang.</CommandEmpty>
+            <CommandGroup>
+              {reeds.map((r) => {
+                const id = r["ID SISIR"];
+                const destiny = r["Nomor sisir Destiny"] || r.Nomor_sisir_Destiny || "";
+                const kondisi = r["Kondisi Sisir"] || "";
+                return (
+                  <CommandItem
+                    key={id}
+                    value={`${id} ${destiny}`}
+                    onSelect={() => {
+                      onChange(id);
+                      setOpen(false);
+                    }}
+                  >
+                    <Check className={cn("mr-2 h-4 w-4", value === id ? "opacity-100" : "opacity-0")} />
+                    <div className="flex flex-col">
+                      <span className="font-mono text-sm">{destiny} <span className="text-muted-foreground">({id})</span></span>
+                      {kondisi && <span className="text-xs text-muted-foreground">{kondisi}</span>}
+                    </div>
+                  </CommandItem>
+                );
+              })}
+            </CommandGroup>
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
 export default function ManagePage() {
   const { isAdmin } = useAuth();
   const [machines, setMachines] = useState<LiveTracking[]>([]);
@@ -63,11 +130,9 @@ export default function ManagePage() {
 
   const [searchQuery, setSearchQuery] = useState("");
 
-  // ✅ Ref untuk selectedMachine agar loadData tidak perlu selectedMachine sebagai dependency
   const selectedMachineRef = useRef<LiveTracking | null>(null);
   selectedMachineRef.current = selectedMachine;
 
-  // ✅ loadData tanpa dependency selectedMachine — tidak ada infinite loop
   const loadData = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -107,7 +172,6 @@ export default function ManagePage() {
       combined.sort((a, b) => new Date(b.tanggal).getTime() - new Date(a.tanggal).getTime());
       setHistoryData(combined);
 
-      // ✅ Pakai ref bukan dependency
       const current = selectedMachineRef.current;
       if (current) {
         const updated = trackData.find((m) => m.Nomer_Mesin === current.Nomer_Mesin);
@@ -118,7 +182,7 @@ export default function ManagePage() {
     } finally {
       setLoading(false);
     }
-  }, []); // ✅ dependency kosong — aman
+  }, []);
 
   useEffect(() => { loadData(); }, [loadData]);
 
@@ -150,7 +214,6 @@ export default function ManagePage() {
       return;
     }
     try {
-      // ✅ Optimistic update
       setMachines((prev) =>
         prev.map((m) =>
           m.Nomer_Mesin === selectedMachine.Nomer_Mesin
@@ -167,7 +230,6 @@ export default function ManagePage() {
       setIsEditOpen(false);
       loadData();
     } catch (err: any) {
-      // ✅ Rollback kalau gagal
       setMachines((prev) =>
         prev.map((m) =>
           m.Nomer_Mesin === editMachineData.Nomer_Mesin ? selectedMachine : m
@@ -185,7 +247,6 @@ export default function ManagePage() {
     setIsEditOpen(true);
   };
 
-  // ✅ PASANG SISIR
   const handleInstallReed = async () => {
     if (!selectedMachine) return;
     if (!installData.ID_sisir_terpasang || !installData.Nama_Mekanik) {
@@ -203,7 +264,6 @@ export default function ManagePage() {
     const nomorDestiny = sisirRow?.["Nomor sisir Destiny"] || sisirRow?.Nomor_sisir_Destiny || "";
 
     try {
-      // ✅ Optimistic update — UI langsung berubah
       setMachines((prev) =>
         prev.map((m) =>
           m.Nomer_Mesin === selectedMachine.Nomer_Mesin
@@ -227,7 +287,6 @@ export default function ManagePage() {
       toast.success("Sisir berhasil dipasang!");
       loadData();
     } catch (err: any) {
-      // ✅ Rollback kalau gagal
       setMachines((prev) =>
         prev.map((m) =>
           m.Nomer_Mesin === selectedMachine.Nomer_Mesin ? selectedMachine : m
@@ -238,7 +297,6 @@ export default function ManagePage() {
     }
   };
 
-  // ✅ LEPAS SISIR — bug "LIVE_" sudah difix jadi "LIVE_TRACKING"
   const handleRemoveReed = async () => {
     if (!selectedMachine || !selectedMachine.ID_sisir_terpasang) return;
     if (!removeData.Kondisi_SIsir || !removeData.Nama_Mekanik) {
@@ -252,7 +310,6 @@ export default function ManagePage() {
     const currentDestiny = selectedMachine.Nomor_sisir_Destiny || (selectedMachine as any)["Nomor sisir Destiny"] || "";
 
     try {
-      // ✅ Optimistic update — UI langsung berubah
       setMachines((prev) =>
         prev.map((m) =>
           m.Nomer_Mesin === currentMesin
@@ -261,14 +318,12 @@ export default function ManagePage() {
         )
       );
 
-      // ✅ Tutup modal segera
       setIsDetailOpen(false);
       setSelectedMachine(null);
       setRemoveData({ Kondisi_SIsir: "", Nama_Mekanik: "" });
 
-      // ✅ "LIVE_" → "LIVE_TRACKING" (bug fix kritis!)
       await Promise.all([
-        updateRowInSheet("LIVE_TRACKIN", "Nomer_Mesin", currentMesin, {
+        updateRowInSheet("LIVE_TRACKING", "Nomer_Mesin", currentMesin, {
           ID_sisir_terpasang: "-",
           Nomor_sisir_Destiny: "-",
           Tanggal_Pasang: "-",
@@ -287,7 +342,6 @@ export default function ManagePage() {
       toast.success("Sisir berhasil dilepas!");
       loadData();
     } catch (err: any) {
-      // ✅ Rollback kalau gagal
       setMachines((prev) =>
         prev.map((m) => (m.Nomer_Mesin === currentMesin ? selectedMachine : m))
       );
@@ -508,19 +562,12 @@ export default function ManagePage() {
                         <div className="space-y-4 py-4">
                           <div className="space-y-2">
                             <Label>Pilih Sisir (Stok Gudang)</Label>
-                            <Select onValueChange={(v) => setInstallData({ ...installData, ID_sisir_terpasang: v })}>
-                              <SelectTrigger><SelectValue placeholder="Pilih ID Sisir" /></SelectTrigger>
-                              <SelectContent>
-                                {availableReeds.length === 0 && (
-                                  <SelectItem value="_none" disabled>Tidak ada sisir tersedia di gudang</SelectItem>
-                                )}
-                                {availableReeds.map((r) => (
-                                  <SelectItem key={r["ID SISIR"]} value={r["ID SISIR"]}>
-                                    {r["Nomor sisir Destiny"] || r.Nomor_sisir_Destiny} ({r["ID SISIR"]}) — {r["Kondisi Sisir"] || ""}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
+                            {/* ✅ Diganti dari Select dropdown menjadi searchable combobox */}
+                            <ReedCombobox
+                              reeds={availableReeds}
+                              value={installData.ID_sisir_terpasang}
+                              onChange={(id) => setInstallData({ ...installData, ID_sisir_terpasang: id })}
+                            />
                           </div>
                           <div className="space-y-2">
                             <Label>Nama Mekanik</Label>
