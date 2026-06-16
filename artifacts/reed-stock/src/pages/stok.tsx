@@ -138,7 +138,7 @@ export default function StokPage() {
         ID_Sisir: id,
         Nomor_sisir_Destiny: selectedReed["Nomor sisir Destiny"] || selectedReed.Nomor_sisir_Destiny || "",
         Nama_Mekanik: "-", 
-        Kondisi_SIsir: "Service Supplier",
+        Kondisi_SIsir: "RUSAK",
       });
 
       toast.success("Sisir berhasil dicatat ke History Lepas untuk Service");
@@ -162,7 +162,7 @@ export default function StokPage() {
           "Tanggal_Lepas": tanggalSekarang,
           "Nomor_Mesin": "DARI SUPPLIER", 
           "ID_Sisir": idSisir, // Menggunakan variabel yang sudah diperbaiki
-          "Nomor_sisir_Destiny": nomorDestiny || "-", // Menggunakan variabel yang sudah diperbaiki
+          "Nomor_sisir_Destiny": selectedReed["Nomor sisir Destiny"] || selectedReed.Nomor_sisir_Destiny || "",
           "Nama_Mekanik": "-", 
           "Kondisi_SIsir": "BAIK" 
         });

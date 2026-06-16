@@ -245,7 +245,7 @@ export default function ManagePage() {
 
       // ✅ Update LIVE_TRACKING saja (MASTER_STOK dihandle ARRAYFORMULA)
       await Promise.all([
-        updateRowInSheet("LIVE_TRACKING", "Nomer_Mesin", currentMesin, {
+        updateRowInSheet("LIVE_", "Nomer_Mesin", currentMesin, {
           ID_sisir_terpasang: "-",
           Nomor_sisir_Destiny: "-",
           Tanggal_Pasang: "-",

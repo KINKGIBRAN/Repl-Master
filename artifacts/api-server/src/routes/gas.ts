@@ -1,5 +1,4 @@
 import { Router, type IRouter, type Request, type Response } from "express";
-
 const router: IRouter = Router();
 
 const GAS_URL =
@@ -20,7 +19,7 @@ router.get("/gas", async (req: Request, res: Response) => {
   }
 });
 
-// ─── POST /api/gas?sheet=SHEET_NAME ──────────────────────────────────────────
+// ─── POST /api/gas?sheet=SHEET_NAME&action=insert|update|delete ──────────────
 router.post("/gas", async (req: Request, res: Response) => {
   const params = new URLSearchParams(req.query as Record<string, string>);
   const url = `${GAS_URL}?${params.toString()}`;
@@ -39,34 +38,18 @@ router.post("/gas", async (req: Request, res: Response) => {
   }
 });
 
-// ─── PUT /api/gas?sheet=SHEET_NAME&filterColumn=COL&filterValue=VAL ──────────
-router.put("/gas", async (req: Request, res: Response) => {
-  const params = new URLSearchParams(req.query as Record<string, string>);
-  const url = `${GAS_URL}?${params.toString()}`;
-  req.log.info({ url }, "Proxying PUT to GAS");
-  try {
-    const gasRes = await fetch(url, {
-      method: "PUT",
-      headers: { "Content-Type": "text/plain" },
-      body: typeof req.body === "string" ? req.body : JSON.stringify(req.body),
-    });
-    const text = await gasRes.text();
-    res.status(gasRes.status).type("json").send(text);
-  } catch (err: any) {
-    req.log.error({ err }, "GAS proxy PUT failed");
-    res.status(502).json({ error: "GAS proxy error", detail: err.message });
-  }
-});
-
 // ─── DELETE /api/gas?sheet=SHEET_NAME&filterColumn=COL&filterValue=VAL ───────
+// ✅ Menambahkan action=delete agar GAS doPost bisa membaca action dengan benar
 router.delete("/gas", async (req: Request, res: Response) => {
   const params = new URLSearchParams(req.query as Record<string, string>);
+  params.set("action", "delete"); // ✅ pastikan action=delete selalu terkirim
   const url = `${GAS_URL}?${params.toString()}`;
   req.log.info({ url }, "Proxying DELETE to GAS");
   try {
     const gasRes = await fetch(url, {
-      method: "DELETE",
+      method: "POST", // GAS hanya support GET & POST, DELETE dikirim sebagai POST
       headers: { "Content-Type": "text/plain" },
+      body: JSON.stringify({}),
     });
     const text = await gasRes.text();
     res.status(gasRes.status).type("json").send(text);

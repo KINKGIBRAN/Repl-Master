@@ -4,6 +4,12 @@ const PROXY_BASE = "/api/gas";
 // ─── Simple in-memory cache (2-minute TTL) ────────────────────────────────────
 const cache = new Map<string, { data: any[]; ts: number }>();
 const CACHE_TTL_MS = 2 * 60 * 1000;
+const WRITE_DELAY_MS = 1000;
+
+function makeCacheKey(sheetName: string, params?: Record<string, string>): string {
+  const p = params ? `:${JSON.stringify(params)}` : "";
+  return `${sheetName}${p}`;
+}
 
 function getCached(key: string): any[] | null {
   const entry = cache.get(key);
@@ -11,17 +17,26 @@ function getCached(key: string): any[] | null {
   if (Date.now() - entry.ts > CACHE_TTL_MS) { cache.delete(key); return null; }
   return entry.data;
 }
+
 function setCache(key: string, data: any[]) {
   cache.set(key, { data, ts: Date.now() });
 }
+
 export function invalidateCache(sheetName?: string) {
-  if (sheetName) cache.delete(sheetName);
-  else cache.clear();
+  if (sheetName) {
+    // Hapus semua cache key yang berawalan sheetName
+    for (const key of cache.keys()) {
+      if (key.startsWith(sheetName)) cache.delete(key);
+    }
+  } else {
+    cache.clear();
+  }
 }
 
 // ─── GET — read all rows from a sheet ────────────────────────────────────────
 export async function fetchSheetData(sheetName: string): Promise<any[]> {
-  const cached = getCached(sheetName);
+  const cacheKey = makeCacheKey(sheetName);
+  const cached = getCached(cacheKey);
   if (cached) {
     console.log("Data diterima (cache):", sheetName, cached.length, "rows");
     return cached;
@@ -42,7 +57,7 @@ export async function fetchSheetData(sheetName: string): Promise<any[]> {
       console.error("Error Detail: response bukan array", data);
       return [];
     }
-    setCache(sheetName, data);
+    setCache(cacheKey, data);
     return data;
   } catch (error) {
     console.error("Error Detail:", { sheet: sheetName, error });
@@ -62,7 +77,20 @@ export async function fetchMultipleSheets(sheetNames: string[]): Promise<Record<
 }
 
 // ─── POST — insert a new row into a sheet ────────────────────────────────────
-export async function addRowToSheet(sheetName: string, row: Record<string, any>): Promise<any> {
+export async function addRowToSheet(
+  sheetName: string,
+  row: Record<string, any>,
+  onOptimistic?: (row: any) => void
+): Promise<any> {
+  const cacheKey = makeCacheKey(sheetName);
+
+  // Optimistic update — UI langsung update tanpa tunggu GAS
+  const cached = getCached(cacheKey);
+  if (cached && onOptimistic) {
+    onOptimistic(row);
+    setCache(cacheKey, [...cached, row]);
+  }
+
   const url = `${PROXY_BASE}?sheet=${encodeURIComponent(sheetName)}&action=insert`;
   console.log("Fetching URL:", url, "data:", row);
   try {
@@ -74,20 +102,23 @@ export async function addRowToSheet(sheetName: string, row: Record<string, any>)
     if (!res.ok) {
       const text = await res.text().catch(() => "");
       console.error("Error Detail:", { sheet: sheetName, status: res.status, body: text });
+      invalidateCache(sheetName); // rollback cache kalau gagal
       throw new Error(`Gagal menambah data ke ${sheetName} (HTTP ${res.status})`);
     }
     const data = await res.json().catch(() => ({}));
     console.log("Data diterima:", sheetName, data);
+    // Tunggu GAS flush sebelum invalidate
+    await new Promise(r => setTimeout(r, WRITE_DELAY_MS));
     invalidateCache(sheetName);
     return data;
   } catch (error) {
     console.error("Error Detail:", { sheet: sheetName, error });
+    invalidateCache(sheetName); // rollback cache kalau error
     throw error;
   }
 }
 
 // ─── POST action=update — update row matched by a key column ─────────────────
-// GAS tidak support method PUT native, jadi pakai POST + action=update
 export async function updateRowInSheet(
   sheetName: string,
   keyColumn: string,
@@ -109,15 +140,17 @@ export async function updateRowInSheet(
     }
     const data = await res.json().catch(() => ({}));
     console.log("Data diterima:", sheetName, data);
+    await new Promise(r => setTimeout(r, WRITE_DELAY_MS));
     invalidateCache(sheetName);
     return data;
   } catch (error) {
     console.error("Error Detail:", { sheet: sheetName, keyColumn, keyValue, error });
+    invalidateCache(sheetName);
     throw error;
   }
 }
 
-// ─── POST action=delete — delete row matched by a key column ─────────────────
+// ─── DELETE — delete row matched by a key column ─────────────────────────────
 export async function deleteRowFromSheet(
   sheetName: string,
   keyColumn: string,
@@ -127,9 +160,8 @@ export async function deleteRowFromSheet(
   console.log("Fetching URL:", url, { keyColumn, keyValue });
   try {
     const res = await fetch(url, {
-      method: "POST",
+      method: "DELETE",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({}),
     });
     if (!res.ok) {
       const text = await res.text().catch(() => "");
@@ -138,10 +170,12 @@ export async function deleteRowFromSheet(
     }
     const data = await res.json().catch(() => ({}));
     console.log("Data diterima:", sheetName, data);
+    await new Promise(r => setTimeout(r, WRITE_DELAY_MS));
     invalidateCache(sheetName);
     return data;
   } catch (error) {
     console.error("Error Detail:", { sheet: sheetName, keyColumn, keyValue, error });
+    invalidateCache(sheetName);
     throw error;
   }
 }
