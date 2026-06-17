@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import { fetchMultipleSheets, addRowToSheet, updateRowInSheet, invalidateCache } from "@/lib/api";
+import { fetchMultipleSheets, addRowToSheet, updateRowInSheet } from "@/lib/api";
 import { MasterStok, HistoryPasang, HistoryLepas, CombinedHistory } from "@/lib/types";
 import { Spinner } from "@/components/ui/spinner";
 import { Button } from "@/components/ui/button";
@@ -24,9 +24,10 @@ const formatDate = (str: string): string => {
   }
 };
 
+// Pakai nama kolom snake_case sesuai schema Supabase
 const getEffectiveStatus = (item: MasterStok): string => {
-  const status = (item["Status Saat Ini"] || "").trim().toUpperCase();
-  const kondisi = (item["Kondisi Sisir"] || "").trim().toUpperCase();
+  const status = (item.status_saat_ini || "").trim().toUpperCase();
+  const kondisi = (item.kondisi_sisir || "").trim().toUpperCase();
   if (status.includes("DIPAKAI") || status.includes("PAKAI")) return "Dipakai";
   if (status.includes("SERVICE") || status.includes("REPAIR") || status.includes("SUPPLIER")) return "Service";
   if (status.includes("RUSAK") || kondisi.includes("RUSAK")) return "Rusak";
@@ -49,25 +50,23 @@ export default function StokPage() {
   const [isDetailOpen, setIsDetailOpen] = useState(false);
 
   const [newReed, setNewReed] = useState({
-    "ID SISIR": "",
-    "Nomor sisir Destiny": "",
-    "Merk Supplier": "",
-    "Posisi Rak": "",
+    id_sisir: "",
+    nomor_sisir_destiny: "",
+    merk_supplier: "",
+    posisi_rak: "",
   });
   const [cutData, setCutData] = useState({ dimensi: "", mekanik: "" });
 
-  // ✅ Ref untuk selectedReed agar loadData tidak perlu selectedReed sebagai dependency
   const selectedReedRef = useRef<MasterStok | null>(null);
   selectedReedRef.current = selectedReed;
 
-  // ✅ loadData tanpa dependency selectedReed — tidak ada infinite loop
   const loadData = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
       const sheets = await fetchMultipleSheets(["MASTER_STOK", "HISTORY_PASANG", "HISTORY_LEPAS"]);
       const stokData: MasterStok[] = (sheets["MASTER_STOK"] || []).filter(
-        (s: MasterStok) => s["ID SISIR"] && s["ID SISIR"].trim() !== ""
+        (s: MasterStok) => s.id_sisir && s.id_sisir.trim() !== ""
       );
       const hpData: HistoryPasang[] = sheets["HISTORY_PASANG"] || [];
       const hlData: HistoryLepas[] = sheets["HISTORY_LEPAS"] || [];
@@ -77,29 +76,28 @@ export default function StokPage() {
       const combined: CombinedHistory[] = [
         ...hpData.map((h) => ({
           type: "PASANG" as const,
-          Nomor_Mesin: h.Nomor_Mesin,
-          ID_Sisir: h.ID_Sisir,
-          Nomor_sisir_Destiny: h.Nomor_sisir_Destiny,
-          Nama_Mekanik: h.Nama_Mekanik,
-          tanggal: h.Tanggal_Ganti,
+          nomor_mesin: h.nomor_mesin,
+          id_sisir: h.id_sisir,
+          nomor_sisir_destiny: h.nomor_sisir_destiny,
+          nama_mekanik: h.nama_mekanik,
+          tanggal: h.tanggal_ganti,
         })),
         ...hlData.map((h) => ({
           type: "LEPAS" as const,
-          Nomor_Mesin: h.Nomor_Mesin,
-          ID_Sisir: h.ID_Sisir,
-          Nomor_sisir_Destiny: h.Nomor_sisir_Destiny,
-          Nama_Mekanik: h.Nama_Mekanik,
-          tanggal: h.Tanggal_Lepas,
-          Kondisi_SIsir: h.Kondisi_SIsir,
+          nomor_mesin: h.nomor_mesin,
+          id_sisir: h.id_sisir,
+          nomor_sisir_destiny: h.nomor_sisir_destiny,
+          nama_mekanik: h.nama_mekanik,
+          tanggal: h.tanggal_lepas,
+          kondisi_sisir: h.kondisi_sisir,
         })),
       ];
       combined.sort((a, b) => new Date(b.tanggal).getTime() - new Date(a.tanggal).getTime());
       setHistoryData(combined);
 
-      // ✅ Pakai ref bukan dependency
       const current = selectedReedRef.current;
       if (current) {
-        const updated = stokData.find((s) => s["ID SISIR"] === current["ID SISIR"]);
+        const updated = stokData.find((s) => s.id_sisir === current.id_sisir);
         if (updated) setSelectedReed(updated);
       }
     } catch (err: any) {
@@ -107,145 +105,113 @@ export default function StokPage() {
     } finally {
       setLoading(false);
     }
-  }, []); // ✅ dependency kosong — aman
+  }, []);
 
   useEffect(() => { loadData(); }, [loadData]);
 
-  // ✅ Tambah Sisir Baru dengan Optimistic UI
   const handleAddReed = async () => {
-    if (!newReed["ID SISIR"]) {
+    if (!newReed.id_sisir) {
       toast.error("ID Sisir harus diisi");
       return;
     }
-    const row = {
-      ...newReed,
-      "Nomor_Mesin": "Dari Supplier",
-      "Nama_Mekanik": "",
-      "Kondisi Sisi": "BAGUS",
-    };
     try {
-      await addRowToSheet("HISTORY_LEPAS", row, (optimisticRow) => {
-        // ✅ UI langsung update tanpa tunggu GAS
-        toast.info("Menyimpan data...");
+      await addRowToSheet("MASTER_STOK", {
+        ...newReed,
+        status_saat_ini: "GUDANG",
+        kondisi_sisir: "BAGUS",
       });
       toast.success("Sisir berhasil ditambahkan");
-      setNewReed({ "ID SISIR": "", "Nomor sisir Destiny": "", "Merk Supplier": "", "Posisi Rak": "" });
-      loadData(); // ✅ langsung reload tanpa setTimeout
+      setNewReed({ id_sisir: "", nomor_sisir_destiny: "", merk_supplier: "", posisi_rak: "" });
+      loadData();
     } catch (err: any) {
       toast.error(err.message);
     }
   };
 
-  // ✅ Kirim Service dengan Optimistic UI
   const handleKirimService = async () => {
     if (!selectedReed) return;
+    const id = selectedReed.id_sisir;
     const tanggal = new Date().toISOString();
-    const row = {
-      Tanggal_Lepas: tanggal,
-      Nomor_Mesin: "Kirim Supplier",
-      ID_Sisir: selectedReed["ID SISIR"],                                          // ✅ properti benar
-      Nomor_sisir_Destiny: selectedReed["Nomor sisir Destiny"] || "",              // ✅ properti benar
-      Nama_Mekanik: "-",
-      Kondisi_SIsir: "RUSAK",
-    };
+
     try {
-      // ✅ Optimistic: langsung update status di UI
-      setSelectedReed((prev) => prev ? { ...prev, "Status Saat Ini": "Service" } : prev);
+      setSelectedReed((prev) => prev ? { ...prev, status_saat_ini: "SERVICE" } : prev);
       setStok((prev) =>
-        prev.map((s) =>
-          s["ID SISIR"] === selectedReed["ID SISIR"]
-            ? { ...s, "Status Saat Ini": "Service" }
-            : s
-        )
+        prev.map((s) => (s.id_sisir === id ? { ...s, status_saat_ini: "SERVICE" } : s))
       );
 
-      await addRowToSheet("HISTORY_LEPAS", row);
-      toast.success("Sisir berhasil dicatat untuk Service");
+      await addRowToSheet("HISTORY_LEPAS", {
+        tanggal_lepas: tanggal,
+        nomor_mesin: "Kirim Supplier",
+        id_sisir: id,
+        nomor_sisir_destiny: selectedReed.nomor_sisir_destiny || "",
+        nama_mekanik: "-",
+        kondisi_sisir: "RUSAK",
+      });
+
+      toast.success("Sisir berhasil dicatat ke History Lepas untuk Service");
       setIsDetailOpen(false);
       loadData();
     } catch (err: any) {
-      // ✅ Rollback kalau gagal
       setSelectedReed(selectedReed);
-      setStok((prev) =>
-        prev.map((s) =>
-          s["ID SISIR"] === selectedReed["ID SISIR"] ? selectedReed : s
-        )
-      );
+      setStok((prev) => prev.map((s) => (s.id_sisir === id ? selectedReed : s)));
       toast.error(err.message || "Gagal mengirim data service");
     }
   };
 
-  // ✅ Terima Service / Selesai Perbaiki — properti sudah difix
   const handleTerimaService = async () => {
     if (!selectedReed) return;
-
-    // ✅ Properti langsung dan konsisten
-    const idSisir      = selectedReed["ID SISIR"];
-    const nomorDestiny = selectedReed["Nomor sisir Destiny"] || "";
-    const tanggal      = new Date().toISOString();
-
-    const row = {
-      Tanggal_Lepas: tanggal,
-      Nomor_Mesin: "DARI SUPPLIER",
-      ID_Sisir: idSisir,
-      Nomor_sisir_Destiny: nomorDestiny,
-      Nama_Mekanik: "-",
-      Kondisi_SIsir: "BAIK",
-    };
+    const idSisir = selectedReed.id_sisir;
+    const nomorDestiny = selectedReed.nomor_sisir_destiny || "";
+    const tanggalSekarang = new Date().toISOString();
 
     try {
-      // ✅ Optimistic: langsung update status di UI
-      setSelectedReed((prev) => prev ? { ...prev, "Status Saat Ini": "Gudang" } : prev);
+      setSelectedReed((prev) => prev ? { ...prev, status_saat_ini: "GUDANG" } : prev);
       setStok((prev) =>
-        prev.map((s) =>
-          s["ID SISIR"] === idSisir ? { ...s, "Status Saat Ini": "Gudang" } : s
-        )
+        prev.map((s) => (s.id_sisir === idSisir ? { ...s, status_saat_ini: "GUDANG" } : s))
       );
 
-      await addRowToSheet("HISTORY_LEPAS", row);
+      await addRowToSheet("HISTORY_LEPAS", {
+        tanggal_lepas: tanggalSekarang,
+        nomor_mesin: "DARI SUPPLIER",
+        id_sisir: idSisir,
+        nomor_sisir_destiny: nomorDestiny,
+        nama_mekanik: "-",
+        kondisi_sisir: "BAIK",
+      });
+
       toast.success("Data berhasil masuk ke History Lepas");
       setIsDetailOpen(false);
       loadData();
     } catch (err: any) {
-      // ✅ Rollback kalau gagal
       setSelectedReed(selectedReed);
-      setStok((prev) =>
-        prev.map((s) => (s["ID SISIR"] === idSisir ? selectedReed : s))
-      );
+      setStok((prev) => prev.map((s) => (s.id_sisir === idSisir ? selectedReed : s)));
       toast.error(err.message);
     }
   };
 
-  // ✅ Potong Sisir dengan Optimistic UI
   const handlePotong = async () => {
     if (!selectedReed || !cutData.dimensi) {
       toast.error("Isi dimensi baru");
       return;
     }
     const updates = {
-      "Nomor sisir Destiny": cutData.dimensi,
-      "Kondisi Sisir": `Dipotong ${new Date().toLocaleDateString("id-ID")}${cutData.mekanik ? " oleh " + cutData.mekanik : ""}`,
+      nomor_sisir_destiny: cutData.dimensi,
+      kondisi_sisir: `Dipotong ${new Date().toLocaleDateString("id-ID")}${cutData.mekanik ? " oleh " + cutData.mekanik : ""}`,
     };
     try {
-      // ✅ Optimistic: langsung update di UI
       setSelectedReed((prev) => prev ? { ...prev, ...updates } : prev);
       setStok((prev) =>
-        prev.map((s) =>
-          s["ID SISIR"] === selectedReed["ID SISIR"] ? { ...s, ...updates } : s
-        )
+        prev.map((s) => (s.id_sisir === selectedReed.id_sisir ? { ...s, ...updates } : s))
       );
 
-      await updateRowInSheet("MASTER_STOK", "ID SISIR", selectedReed["ID SISIR"], updates);
+      await updateRowInSheet("MASTER_STOK", "id_sisir", selectedReed.id_sisir, updates);
       toast.success("Spesifikasi berhasil diupdate");
       setCutData({ dimensi: "", mekanik: "" });
       setIsDetailOpen(false);
       loadData();
     } catch (err: any) {
-      // ✅ Rollback kalau gagal
       setSelectedReed(selectedReed);
-      setStok((prev) =>
-        prev.map((s) => (s["ID SISIR"] === selectedReed["ID SISIR"] ? selectedReed : s))
-      );
+      setStok((prev) => prev.map((s) => (s.id_sisir === selectedReed.id_sisir ? selectedReed : s)));
       toast.error(err.message);
     }
   };
@@ -264,16 +230,16 @@ export default function StokPage() {
       const q = searchQuery.toLowerCase();
       list = list.filter(
         (s) =>
-          s["ID SISIR"]?.toLowerCase().includes(q) ||
-          s["Nomor sisir Destiny"]?.toLowerCase().includes(q) ||
-          s["Merk Supplier"]?.toLowerCase().includes(q) ||
-          s["Posisi Rak"]?.toLowerCase().includes(q)
+          s.id_sisir?.toLowerCase().includes(q) ||
+          s.nomor_sisir_destiny?.toLowerCase().includes(q) ||
+          s.merk_supplier?.toLowerCase().includes(q) ||
+          s.posisi_rak?.toLowerCase().includes(q)
       );
     }
     return list;
   })();
 
-  const reedHistory = historyData.filter((h) => h.ID_Sisir === selectedReed?.["ID SISIR"]);
+  const reedHistory = historyData.filter((h) => h.id_sisir === selectedReed?.id_sisir);
 
   const statusBadge = (item: MasterStok) => {
     const label = getEffectiveStatus(item);
@@ -291,8 +257,8 @@ export default function StokPage() {
   };
 
   const selectedStatus = selectedReed ? getEffectiveStatus(selectedReed) : "";
-  const isLocked  = selectedStatus === "Dipakai";
-  const isRusak   = selectedStatus === "Rusak";
+  const isLocked = selectedStatus === "Dipakai";
+  const isRusak = selectedStatus === "Rusak";
   const isService = selectedStatus === "Service";
 
   if (loading) {
@@ -329,19 +295,19 @@ export default function StokPage() {
               <div className="space-y-4 py-4">
                 <div className="space-y-2">
                   <Label>ID Sisir</Label>
-                  <Input value={newReed["ID SISIR"]} onChange={(e) => setNewReed({ ...newReed, "ID SISIR": e.target.value })} placeholder="Contoh: SKR-100" />
+                  <Input value={newReed.id_sisir} onChange={(e) => setNewReed({ ...newReed, id_sisir: e.target.value })} placeholder="Contoh: SKR-100" />
                 </div>
                 <div className="space-y-2">
                   <Label>Nomor Sisir Destiny</Label>
-                  <Input value={newReed["Nomor sisir Destiny"]} onChange={(e) => setNewReed({ ...newReed, "Nomor sisir Destiny": e.target.value })} placeholder="Contoh: 32X78X100" />
+                  <Input value={newReed.nomor_sisir_destiny} onChange={(e) => setNewReed({ ...newReed, nomor_sisir_destiny: e.target.value })} placeholder="Contoh: 32X78X100" />
                 </div>
                 <div className="space-y-2">
                   <Label>Merk Supplier</Label>
-                  <Input value={newReed["Merk Supplier"]} onChange={(e) => setNewReed({ ...newReed, "Merk Supplier": e.target.value })} placeholder="Contoh: SETIA KIJI REED" />
+                  <Input value={newReed.merk_supplier} onChange={(e) => setNewReed({ ...newReed, merk_supplier: e.target.value })} placeholder="Contoh: SETIA KIJI REED" />
                 </div>
                 <div className="space-y-2">
                   <Label>Posisi Rak</Label>
-                  <Input value={newReed["Posisi Rak"]} onChange={(e) => setNewReed({ ...newReed, "Posisi Rak": e.target.value })} placeholder="Contoh: RAK A1" />
+                  <Input value={newReed.posisi_rak} onChange={(e) => setNewReed({ ...newReed, posisi_rak: e.target.value })} placeholder="Contoh: RAK A1" />
                 </div>
               </div>
               <DialogFooter>
@@ -352,7 +318,6 @@ export default function StokPage() {
         )}
       </div>
 
-      {/* Search Bar */}
       <div className="relative">
         <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground/70" />
         <Input
@@ -367,7 +332,6 @@ export default function StokPage() {
         )}
       </div>
 
-      {/* Filter Tabs with counts */}
       <Tabs value={filter} onValueChange={(v) => setFilter(v as FilterKey)}>
         <TabsList className="w-full grid grid-cols-5 h-auto">
           {(["Semua", "Gudang", "Dipakai", "Rusak", "Service"] as FilterKey[]).map((tab) => (
@@ -386,21 +350,21 @@ export default function StokPage() {
       ) : (
         <div className="grid gap-2">
           {filteredStok.map((item) => {
-            const disp   = getEffectiveStatus(item);
+            const disp = getEffectiveStatus(item);
             const locked = disp === "Dipakai";
             return (
               <div
-                key={item["ID SISIR"]}
+                key={item.id_sisir}
                 onClick={() => { setSelectedReed(item); setIsDetailOpen(true); }}
                 className={`bg-card border border-border p-4 rounded-xl cursor-pointer hover:border-primary/50 transition-colors flex items-center justify-between ${locked ? "opacity-80" : ""}`}
               >
                 <div className="min-w-0">
                   <div className="font-bold font-mono flex items-center gap-2">
                     {locked && <Lock className="h-3.5 w-3.5 text-muted-foreground shrink-0" />}
-                    {item["ID SISIR"]}
+                    {item.id_sisir}
                   </div>
-                  <div className="text-sm text-muted-foreground truncate">{item["Nomor sisir Destiny"]} · {item["Merk Supplier"]}</div>
-                  {item["Posisi Rak"] && <div className="text-xs text-muted-foreground/60">{item["Posisi Rak"]}</div>}
+                  <div className="text-sm text-muted-foreground truncate">{item.nomor_sisir_destiny} · {item.merk_supplier}</div>
+                  {item.posisi_rak && <div className="text-xs text-muted-foreground/60">{item.posisi_rak}</div>}
                 </div>
                 {statusBadge(item)}
               </div>
@@ -409,35 +373,32 @@ export default function StokPage() {
         </div>
       )}
 
-      {/* Reed Detail Dialog */}
       <Dialog open={isDetailOpen} onOpenChange={setIsDetailOpen}>
         <DialogContent className="max-h-[90vh] overflow-y-auto">
           {selectedReed && (
             <>
               <DialogHeader>
                 <div className="flex justify-between items-start pr-6">
-                  <DialogTitle className="font-mono">{selectedReed["ID SISIR"]}</DialogTitle>
+                  <DialogTitle className="font-mono">{selectedReed.id_sisir}</DialogTitle>
                   {statusBadge(selectedReed)}
                 </div>
               </DialogHeader>
 
               <div className="grid grid-cols-2 gap-3 bg-muted/30 p-3 rounded-lg text-sm">
-                <div><p className="text-xs text-muted-foreground">Nomor Destiny</p><p className="font-medium">{selectedReed["Nomor sisir Destiny"] || "-"}</p></div>
-                <div><p className="text-xs text-muted-foreground">Merk Supplier</p><p className="font-medium">{selectedReed["Merk Supplier"] || "-"}</p></div>
-                <div><p className="text-xs text-muted-foreground">Mesin Terpasang</p><p className="font-medium">{selectedReed["Mesin Terpasang"] || "-"}</p></div>
-                <div><p className="text-xs text-muted-foreground">Posisi Rak</p><p className="font-medium">{selectedReed["Posisi Rak"] || "-"}</p></div>
-                <div className="col-span-2"><p className="text-xs text-muted-foreground">Kondisi</p><p className="font-medium">{selectedReed["Kondisi Sisir"] || "-"}</p></div>
+                <div><p className="text-xs text-muted-foreground">Nomor Destiny</p><p className="font-medium">{selectedReed.nomor_sisir_destiny || "-"}</p></div>
+                <div><p className="text-xs text-muted-foreground">Merk Supplier</p><p className="font-medium">{selectedReed.merk_supplier || "-"}</p></div>
+                <div><p className="text-xs text-muted-foreground">Mesin Terpasang</p><p className="font-medium">{selectedReed.mesin_terpasang || "-"}</p></div>
+                <div><p className="text-xs text-muted-foreground">Posisi Rak</p><p className="font-medium">{selectedReed.posisi_rak || "-"}</p></div>
+                <div className="col-span-2"><p className="text-xs text-muted-foreground">Kondisi</p><p className="font-medium">{selectedReed.kondisi_sisir || "-"}</p></div>
               </div>
 
-              {/* Lock notice for in-use */}
               {isLocked && (
                 <div className="flex items-center gap-2 rounded-lg bg-muted/40 border border-border px-3 py-2 text-xs text-muted-foreground">
                   <Lock className="h-3.5 w-3.5 text-yellow-500 shrink-0" />
-                  Sisir sedang terpasang di mesin <strong>{selectedReed["Mesin Terpasang"]}</strong>. Lepas dari mesin terlebih dahulu sebelum mengubah status.
+                  Sisir sedang terpasang di mesin <strong>{selectedReed.mesin_terpasang}</strong>. Lepas dari mesin terlebih dahulu sebelum mengubah status.
                 </div>
               )}
 
-              {/* Action buttons — only for admin AND not locked */}
               {isAdmin && !isLocked && (
                 <div className="space-y-2">
                   <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Aksi</p>
@@ -470,7 +431,7 @@ export default function StokPage() {
                           </Button>
                         </DialogTrigger>
                         <DialogContent>
-                          <DialogHeader><DialogTitle>Potong Sisir {selectedReed["ID SISIR"]}</DialogTitle></DialogHeader>
+                          <DialogHeader><DialogTitle>Potong Sisir {selectedReed.id_sisir}</DialogTitle></DialogHeader>
                           <div className="space-y-4 py-4">
                             <div className="space-y-2">
                               <Label>Dimensi Baru (Destiny)</Label>
@@ -499,14 +460,14 @@ export default function StokPage() {
                     )}
                   </div>
 
-                  <Button variant="secondary" className="w-full" onClick={() => generateReedHistoryPDF(selectedReed["ID SISIR"], selectedReed["Nomor sisir Destiny"], reedHistory)}>
+                  <Button variant="secondary" className="w-full" onClick={() => generateReedHistoryPDF(selectedReed.id_sisir, selectedReed.nomor_sisir_destiny, reedHistory)}>
                     <FileText className="w-4 h-4 mr-2" /> Cetak PDF Riwayat
                   </Button>
                 </div>
               )}
 
               {!isAdmin && (
-                <Button variant="secondary" className="w-full" onClick={() => generateReedHistoryPDF(selectedReed["ID SISIR"], selectedReed["Nomor sisir Destiny"], reedHistory)}>
+                <Button variant="secondary" className="w-full" onClick={() => generateReedHistoryPDF(selectedReed.id_sisir, selectedReed.nomor_sisir_destiny, reedHistory)}>
                   <FileText className="w-4 h-4 mr-2" /> Cetak PDF Riwayat
                 </Button>
               )}
@@ -521,11 +482,11 @@ export default function StokPage() {
                       <div key={i} className="text-sm border-l-2 border-border pl-3 py-1"
                         style={{ borderColor: h.type === "PASANG" ? "hsl(var(--primary))" : "hsl(var(--destructive))" }}>
                         <div className="flex justify-between font-medium">
-                          <span>{h.type} di Mesin {h.Nomor_Mesin}</span>
+                          <span>{h.type} di Mesin {h.nomor_mesin}</span>
                           <span className="text-muted-foreground text-xs">{formatDate(h.tanggal)}</span>
                         </div>
                         <div className="text-muted-foreground text-xs mt-0.5">
-                          Mekanik: {h.Nama_Mekanik}{h.Kondisi_SIsir ? ` · ${h.Kondisi_SIsir}` : ""}
+                          Mekanik: {h.nama_mekanik}{h.kondisi_sisir ? ` · ${h.kondisi_sisir}` : ""}
                         </div>
                       </div>
                     ))}

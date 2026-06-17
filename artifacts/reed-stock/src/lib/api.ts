@@ -1,15 +1,34 @@
-// ─── All requests go through our own API server proxy to avoid GAS CORS issues ─
-const PROXY_BASE = "/api/gas";
+import { supabase } from "./supabaseClient";
+
+// ─── Mapping nama "sheet" lama ke nama tabel Supabase yang sebenarnya ──────
+const TABLE_MAP: Record<string, string> = {
+  MASTER_STOK: "master_stok",
+  LIVE_TRACKING: "live_tracking",
+  HISTORY_PASANG: "history_pasang",
+  HISTORY_LEPAS: "history_lepas",
+};
+
+// ✅ Untuk SELECT, LIVE_TRACKING dibaca dari VIEW v_live_tracking supaya
+// kolom durasi_pakai ikut terhitung otomatis (lihat schema: durasi_pakai
+// bukan kolom asli, dihitung on-the-fly oleh Postgres).
+// Untuk INSERT/UPDATE/DELETE tetap pakai tabel asli live_tracking,
+// karena view tidak bisa langsung ditulis.
+const READ_TABLE_MAP: Record<string, string> = {
+  ...TABLE_MAP,
+  LIVE_TRACKING: "v_live_tracking",
+};
+
+function resolveTable(name: string): string {
+  return TABLE_MAP[name] ?? name.toLowerCase();
+}
+
+function resolveReadTable(name: string): string {
+  return READ_TABLE_MAP[name] ?? name.toLowerCase();
+}
 
 // ─── Simple in-memory cache (2-minute TTL) ────────────────────────────────────
 const cache = new Map<string, { data: any[]; ts: number }>();
 const CACHE_TTL_MS = 2 * 60 * 1000;
-const WRITE_DELAY_MS = 1000;
-
-function makeCacheKey(sheetName: string, params?: Record<string, string>): string {
-  const p = params ? `:${JSON.stringify(params)}` : "";
-  return `${sheetName}${p}`;
-}
 
 function getCached(key: string): any[] | null {
   const entry = cache.get(key);
@@ -17,55 +36,37 @@ function getCached(key: string): any[] | null {
   if (Date.now() - entry.ts > CACHE_TTL_MS) { cache.delete(key); return null; }
   return entry.data;
 }
-
 function setCache(key: string, data: any[]) {
   cache.set(key, { data, ts: Date.now() });
 }
-
 export function invalidateCache(sheetName?: string) {
-  if (sheetName) {
-    // Hapus semua cache key yang berawalan sheetName
-    for (const key of cache.keys()) {
-      if (key.startsWith(sheetName)) cache.delete(key);
-    }
-  } else {
-    cache.clear();
-  }
+  if (sheetName) cache.delete(resolveReadTable(sheetName));
+  else cache.clear();
 }
 
-// ─── GET — read all rows from a sheet ────────────────────────────────────────
+// ─── GET — read all rows (dari view kalau ada, supaya kolom turunan ikut) ──
 export async function fetchSheetData(sheetName: string): Promise<any[]> {
-  const cacheKey = makeCacheKey(sheetName);
-  const cached = getCached(cacheKey);
+  const readTable = resolveReadTable(sheetName);
+
+  const cached = getCached(readTable);
   if (cached) {
-    console.log("Data diterima (cache):", sheetName, cached.length, "rows");
+    console.log("Data diterima (cache):", readTable, cached.length, "rows");
     return cached;
   }
 
-  const url = `${PROXY_BASE}?sheet=${encodeURIComponent(sheetName)}`;
-  console.log("Fetching URL:", url);
-  try {
-    const res = await fetch(url);
-    if (!res.ok) {
-      const text = await res.text().catch(() => "");
-      console.error("Error Detail:", { sheet: sheetName, status: res.status, body: text });
-      return [];
-    }
-    const data = await res.json();
-    console.log("Data diterima:", sheetName, data);
-    if (!Array.isArray(data)) {
-      console.error("Error Detail: response bukan array", data);
-      return [];
-    }
-    setCache(cacheKey, data);
-    return data;
-  } catch (error) {
-    console.error("Error Detail:", { sheet: sheetName, error });
-    throw new Error(`Gagal mengambil data ${sheetName}: ${(error as Error).message}`);
+  const { data, error } = await supabase.from(readTable).select("*");
+
+  if (error) {
+    console.error("Error Detail:", { readTable, error });
+    throw new Error(`Gagal mengambil data ${readTable}: ${error.message}`);
   }
+
+  console.log("Data diterima:", readTable, data?.length ?? 0, "rows");
+  setCache(readTable, data ?? []);
+  return data ?? [];
 }
 
-// ─── Parallel multi-sheet fetch ───────────────────────────────────────────────
+// ─── Parallel multi-table fetch ───────────────────────────────────────────────
 export async function fetchMultipleSheets(sheetNames: string[]): Promise<Record<string, any[]>> {
   const entries = await Promise.all(
     sheetNames.map(async (name) => {
@@ -76,106 +77,70 @@ export async function fetchMultipleSheets(sheetNames: string[]): Promise<Record<
   return Object.fromEntries(entries);
 }
 
-// ─── POST — insert a new row into a sheet ────────────────────────────────────
-export async function addRowToSheet(
-  sheetName: string,
-  row: Record<string, any>,
-  onOptimistic?: (row: any) => void
-): Promise<any> {
-  const cacheKey = makeCacheKey(sheetName);
+// ─── INSERT — tambah baris baru ke tabel ASLI (bukan view) ─────────────────
+export async function addRowToSheet(sheetName: string, row: Record<string, any>): Promise<any> {
+  const table = resolveTable(sheetName);
+  console.log("Insert ke:", table, "data:", row);
 
-  // Optimistic update — UI langsung update tanpa tunggu GAS
-  const cached = getCached(cacheKey);
-  if (cached && onOptimistic) {
-    onOptimistic(row);
-    setCache(cacheKey, [...cached, row]);
+  const { data, error } = await supabase.from(table).insert(row).select();
+
+  if (error) {
+    console.error("Error Detail:", { table, error });
+    throw new Error(`Gagal menambah data ke ${table}: ${error.message}`);
   }
 
-  const url = `${PROXY_BASE}?sheet=${encodeURIComponent(sheetName)}&action=insert`;
-  console.log("Fetching URL:", url, "data:", row);
-  try {
-    const res = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(row),
-    });
-    if (!res.ok) {
-      const text = await res.text().catch(() => "");
-      console.error("Error Detail:", { sheet: sheetName, status: res.status, body: text });
-      invalidateCache(sheetName); // rollback cache kalau gagal
-      throw new Error(`Gagal menambah data ke ${sheetName} (HTTP ${res.status})`);
-    }
-    const data = await res.json().catch(() => ({}));
-    console.log("Data diterima:", sheetName, data);
-    // Tunggu GAS flush sebelum invalidate
-    await new Promise(r => setTimeout(r, WRITE_DELAY_MS));
-    invalidateCache(sheetName);
-    return data;
-  } catch (error) {
-    console.error("Error Detail:", { sheet: sheetName, error });
-    invalidateCache(sheetName); // rollback cache kalau error
-    throw error;
-  }
+  console.log("Data diterima:", table, data);
+  invalidateCache(sheetName);
+  return data;
 }
 
-// ─── POST action=update — update row matched by a key column ─────────────────
+// ─── UPDATE — update baris di tabel ASLI berdasarkan kolom kunci ──────────
 export async function updateRowInSheet(
   sheetName: string,
   keyColumn: string,
   keyValue: string,
   updates: Record<string, any>
 ): Promise<any> {
-  const url = `${PROXY_BASE}?sheet=${encodeURIComponent(sheetName)}&action=update&filterColumn=${encodeURIComponent(keyColumn)}&filterValue=${encodeURIComponent(keyValue)}`;
-  console.log("Fetching URL:", url, { updates });
-  try {
-    const res = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(updates),
-    });
-    if (!res.ok) {
-      const text = await res.text().catch(() => "");
-      console.error("Error Detail:", { sheet: sheetName, keyColumn, keyValue, status: res.status, body: text });
-      throw new Error(`Gagal mengupdate ${sheetName} (HTTP ${res.status})`);
-    }
-    const data = await res.json().catch(() => ({}));
-    console.log("Data diterima:", sheetName, data);
-    await new Promise(r => setTimeout(r, WRITE_DELAY_MS));
-    invalidateCache(sheetName);
-    return data;
-  } catch (error) {
-    console.error("Error Detail:", { sheet: sheetName, keyColumn, keyValue, error });
-    invalidateCache(sheetName);
-    throw error;
+  const table = resolveTable(sheetName);
+  console.log("Update di:", table, { keyColumn, keyValue, updates });
+
+  const { data, error } = await supabase
+    .from(table)
+    .update(updates)
+    .eq(keyColumn, keyValue)
+    .select();
+
+  if (error) {
+    console.error("Error Detail:", { table, keyColumn, keyValue, error });
+    throw new Error(`Gagal mengupdate ${table}: ${error.message}`);
   }
+
+  console.log("Data diterima:", table, data);
+  invalidateCache(sheetName);
+  return data;
 }
 
-// ─── DELETE — delete row matched by a key column ─────────────────────────────
+// ─── DELETE — hapus baris di tabel ASLI berdasarkan kolom kunci ───────────
 export async function deleteRowFromSheet(
   sheetName: string,
   keyColumn: string,
   keyValue: string
 ): Promise<any> {
-  const url = `${PROXY_BASE}?sheet=${encodeURIComponent(sheetName)}&action=delete&filterColumn=${encodeURIComponent(keyColumn)}&filterValue=${encodeURIComponent(keyValue)}`;
-  console.log("Fetching URL:", url, { keyColumn, keyValue });
-  try {
-    const res = await fetch(url, {
-      method: "DELETE",
-      headers: { "Content-Type": "application/json" },
-    });
-    if (!res.ok) {
-      const text = await res.text().catch(() => "");
-      console.error("Error Detail:", { sheet: sheetName, keyColumn, keyValue, status: res.status, body: text });
-      throw new Error(`Gagal menghapus dari ${sheetName} (HTTP ${res.status})`);
-    }
-    const data = await res.json().catch(() => ({}));
-    console.log("Data diterima:", sheetName, data);
-    await new Promise(r => setTimeout(r, WRITE_DELAY_MS));
-    invalidateCache(sheetName);
-    return data;
-  } catch (error) {
-    console.error("Error Detail:", { sheet: sheetName, keyColumn, keyValue, error });
-    invalidateCache(sheetName);
-    throw error;
+  const table = resolveTable(sheetName);
+  console.log("Delete di:", table, { keyColumn, keyValue });
+
+  const { data, error } = await supabase
+    .from(table)
+    .delete()
+    .eq(keyColumn, keyValue)
+    .select();
+
+  if (error) {
+    console.error("Error Detail:", { table, keyColumn, keyValue, error });
+    throw new Error(`Gagal menghapus dari ${table}: ${error.message}`);
   }
+
+  console.log("Data diterima:", table, data);
+  invalidateCache(sheetName);
+  return data;
 }

@@ -40,3 +40,5 @@ externalPort = 3000
 [userenv.shared]
 ADMIN_PIN = "triputra2024"
 USERS = "[{\"username\":\"ADMIN1\",\"password\":\"12345\",\"role\":\"ADMIN GUDANG\",\"nama\":\"UJANG RUHIAT\"},{\"username\":\"ADMIN2\",\"password\":\"250597\",\"role\":\"ADMIN GUDANG\",\"nama\":\"CHANDRA GIBRAN\"}]"
+VITE_SUPABASE_URL = "https://uhzwlkygcuwtleshxdzn.supabase.co"
+VITE_SUPABASE_ANON_KEY = "sb_publishable_uprtwfHUqPPPxDjJZPBqLA_Dci3IVeN"

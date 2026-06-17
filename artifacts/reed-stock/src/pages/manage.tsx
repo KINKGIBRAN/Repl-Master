@@ -40,13 +40,12 @@ const calculateDuration = (dateStr: string) => {
 };
 
 const isGudang = (s: MasterStok) => {
-  const status = (s["Status Saat Ini"] || "").trim().toLowerCase();
-  const kondisi = (s["Kondisi Sisir"] || "").trim().toLowerCase();
+  const status = (s.status_saat_ini || "").trim().toLowerCase();
+  const kondisi = (s.kondisi_sisir || "").trim().toLowerCase();
   return status.includes("gudang") && !kondisi.includes("rusak");
 };
 
 // ─── Searchable Reed Combobox ──────────────────────────────────────────────
-// ✅ Pengganti dropdown Select biasa — user bisa mengetik ID Sisir atau Nomor Destiny
 function ReedCombobox({
   reeds,
   value,
@@ -57,7 +56,7 @@ function ReedCombobox({
   onChange: (id: string) => void;
 }) {
   const [open, setOpen] = useState(false);
-  const selected = reeds.find((r) => r["ID SISIR"] === value);
+  const selected = reeds.find((r) => r.id_sisir === value);
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -69,7 +68,7 @@ function ReedCombobox({
           className="w-full justify-between font-normal"
         >
           {selected
-            ? `${selected["Nomor sisir Destiny"] || selected.Nomor_sisir_Destiny || "-"} (${selected["ID SISIR"]})`
+            ? `${selected.nomor_sisir_destiny || "-"} (${selected.id_sisir})`
             : "Ketik ID Sisir atau Nomor Destiny..."}
           <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
         </Button>
@@ -81,9 +80,9 @@ function ReedCombobox({
             <CommandEmpty>Tidak ada sisir tersedia di gudang.</CommandEmpty>
             <CommandGroup>
               {reeds.map((r) => {
-                const id = r["ID SISIR"];
-                const destiny = r["Nomor sisir Destiny"] || r.Nomor_sisir_Destiny || "";
-                const kondisi = r["Kondisi Sisir"] || "";
+                const id = r.id_sisir;
+                const destiny = r.nomor_sisir_destiny || "";
+                const kondisi = r.kondisi_sisir || "";
                 return (
                   <CommandItem
                     key={id}
@@ -120,13 +119,13 @@ export default function ManagePage() {
   const [selectedMachine, setSelectedMachine] = useState<LiveTracking | null>(null);
   const [isDetailOpen, setIsDetailOpen] = useState(false);
 
-  const [newMachine, setNewMachine] = useState({ Nomer_Mesin: "", SN_Mesin: "", Jenis_Mesin: "", Posisi_Gedung: "" });
+  const [newMachine, setNewMachine] = useState({ nomer_mesin: "", sn_mesin: "", jenis_mesin: "", posisi_gedung: "" });
 
   const [isEditOpen, setIsEditOpen] = useState(false);
-  const [editMachineData, setEditMachineData] = useState({ Nomer_Mesin: "", Posisi_Gedung: "" });
+  const [editMachineData, setEditMachineData] = useState({ nomer_mesin: "", posisi_gedung: "" });
 
-  const [installData, setInstallData] = useState({ ID_sisir_terpasang: "", Nama_Mekanik: "" });
-  const [removeData, setRemoveData] = useState({ Kondisi_SIsir: "", Nama_Mekanik: "" });
+  const [installData, setInstallData] = useState({ id_sisir_terpasang: "", nama_mekanik: "" });
+  const [removeData, setRemoveData] = useState({ kondisi_sisir: "", nama_mekanik: "" });
 
   const [searchQuery, setSearchQuery] = useState("");
 
@@ -139,10 +138,10 @@ export default function ManagePage() {
     try {
       const sheets = await fetchMultipleSheets(["LIVE_TRACKING", "MASTER_STOK", "HISTORY_PASANG", "HISTORY_LEPAS"]);
       const trackData: LiveTracking[] = (sheets["LIVE_TRACKING"] || []).filter(
-        (m: LiveTracking) => m.Nomer_Mesin && m.Nomer_Mesin.trim() !== ""
+        (m: LiveTracking) => m.nomer_mesin && m.nomer_mesin.trim() !== ""
       );
       const stokData: MasterStok[] = (sheets["MASTER_STOK"] || []).filter(
-        (s: MasterStok) => s["ID SISIR"] && s["ID SISIR"].trim() !== ""
+        (s: MasterStok) => s.id_sisir && s.id_sisir.trim() !== ""
       );
       const hpData: HistoryPasang[] = sheets["HISTORY_PASANG"] || [];
       const hlData: HistoryLepas[] = sheets["HISTORY_LEPAS"] || [];
@@ -151,22 +150,22 @@ export default function ManagePage() {
       setStok(stokData);
 
       const combined: CombinedHistory[] = [
-        ...hpData.map((h: any) => ({
+        ...hpData.map((h) => ({
           type: "PASANG" as const,
-          Nomor_Mesin: h.Nomor_Mesin || h.Nomor_mesin || h.Nomer_Mesin || "",
-          ID_Sisir: h.ID_Sisir || h.ID_sisir || h["ID SISIR"] || "",
-          Nomor_sisir_Destiny: h.Nomor_sisir_Destiny || h["Nomor sisir Destiny"] || "",
-          Nama_Mekanik: h.Nama_Mekanik || h.nama_mekanik || "",
-          tanggal: h.Tanggal_Ganti || "",
+          nomor_mesin: h.nomor_mesin,
+          id_sisir: h.id_sisir,
+          nomor_sisir_destiny: h.nomor_sisir_destiny,
+          nama_mekanik: h.nama_mekanik,
+          tanggal: h.tanggal_ganti,
         })),
-        ...hlData.map((h: any) => ({
+        ...hlData.map((h) => ({
           type: "LEPAS" as const,
-          Nomor_Mesin: h.Nomor_Mesin || h.Nomor_mesin || h.Nomer_Mesin || "",
-          ID_Sisir: h.ID_Sisir || h.ID_sisir || h["ID SISIR"] || "",
-          Nomor_sisir_Destiny: h.Nomor_sisir_Destiny || h["Nomor sisir Destiny"] || "",
-          Nama_Mekanik: h.Nama_Mekanik || h.nama_mekanik || "",
-          tanggal: h.Tanggal_Lepas || "",
-          Kondisi_SIsir: h.Kondisi_SIsir || h.Kondisi_Sisir || "",
+          nomor_mesin: h.nomor_mesin,
+          id_sisir: h.id_sisir,
+          nomor_sisir_destiny: h.nomor_sisir_destiny,
+          nama_mekanik: h.nama_mekanik,
+          tanggal: h.tanggal_lepas,
+          kondisi_sisir: h.kondisi_sisir,
         })),
       ];
       combined.sort((a, b) => new Date(b.tanggal).getTime() - new Date(a.tanggal).getTime());
@@ -174,7 +173,7 @@ export default function ManagePage() {
 
       const current = selectedMachineRef.current;
       if (current) {
-        const updated = trackData.find((m) => m.Nomer_Mesin === current.Nomer_Mesin);
+        const updated = trackData.find((m) => m.nomer_mesin === current.nomer_mesin);
         if (updated) setSelectedMachine(updated);
       }
     } catch (err: any) {
@@ -187,20 +186,19 @@ export default function ManagePage() {
   useEffect(() => { loadData(); }, [loadData]);
 
   const handleAddMachine = async () => {
-    if (!newMachine.Nomer_Mesin || !newMachine.Jenis_Mesin) {
+    if (!newMachine.nomer_mesin || !newMachine.jenis_mesin) {
       toast.error("No Mesin dan Jenis harus diisi");
       return;
     }
     try {
       await addRowToSheet("LIVE_TRACKING", {
         ...newMachine,
-        ID_sisir_terpasang: "",
-        Nomor_sisir_Destiny: "",
-        Tanggal_Pasang: "",
-        Durasi_Pakai: "",
+        id_sisir_terpasang: "-",
+        nomor_sisir_destiny: "-",
+        tanggal_pasang: null,
       });
       toast.success("Mesin berhasil ditambahkan");
-      setNewMachine({ Nomer_Mesin: "", SN_Mesin: "", Jenis_Mesin: "", Posisi_Gedung: "" });
+      setNewMachine({ nomer_mesin: "", sn_mesin: "", jenis_mesin: "", posisi_gedung: "" });
       loadData();
     } catch (err: any) {
       toast.error(err.message);
@@ -209,22 +207,22 @@ export default function ManagePage() {
 
   const handleEditMachine = async () => {
     if (!selectedMachine) return;
-    if (!editMachineData.Nomer_Mesin.trim()) {
+    if (!editMachineData.nomer_mesin.trim()) {
       toast.error("Nama/Nomor Mesin tidak boleh kosong");
       return;
     }
     try {
       setMachines((prev) =>
         prev.map((m) =>
-          m.Nomer_Mesin === selectedMachine.Nomer_Mesin
-            ? { ...m, Nomer_Mesin: editMachineData.Nomer_Mesin, Posisi_Gedung: editMachineData.Posisi_Gedung }
+          m.nomer_mesin === selectedMachine.nomer_mesin
+            ? { ...m, nomer_mesin: editMachineData.nomer_mesin, posisi_gedung: editMachineData.posisi_gedung }
             : m
         )
       );
 
-      await updateRowInSheet("LIVE_TRACKING", "Nomer_Mesin", selectedMachine.Nomer_Mesin, {
-        Nomer_Mesin: editMachineData.Nomer_Mesin,
-        Posisi_Gedung: editMachineData.Posisi_Gedung,
+      await updateRowInSheet("LIVE_TRACKING", "nomer_mesin", selectedMachine.nomer_mesin, {
+        nomer_mesin: editMachineData.nomer_mesin,
+        posisi_gedung: editMachineData.posisi_gedung,
       });
       toast.success("Data mesin berhasil diperbarui");
       setIsEditOpen(false);
@@ -232,7 +230,7 @@ export default function ManagePage() {
     } catch (err: any) {
       setMachines((prev) =>
         prev.map((m) =>
-          m.Nomer_Mesin === editMachineData.Nomer_Mesin ? selectedMachine : m
+          m.nomer_mesin === editMachineData.nomer_mesin ? selectedMachine : m
         )
       );
       toast.error(err.message || "Gagal memperbarui data mesin");
@@ -241,47 +239,47 @@ export default function ManagePage() {
 
   const openEditDialog = (machine: LiveTracking) => {
     setEditMachineData({
-      Nomer_Mesin: machine.Nomer_Mesin || "",
-      Posisi_Gedung: machine.Posisi_Gedung || "",
+      nomer_mesin: machine.nomer_mesin || "",
+      posisi_gedung: machine.posisi_gedung || "",
     });
     setIsEditOpen(true);
   };
 
   const handleInstallReed = async () => {
     if (!selectedMachine) return;
-    if (!installData.ID_sisir_terpasang || !installData.Nama_Mekanik) {
+    if (!installData.id_sisir_terpasang || !installData.nama_mekanik) {
       toast.error("Pilih Sisir dan isi nama Mekanik");
       return;
     }
-    const sisirRow = stok.find((s) => s["ID SISIR"] === installData.ID_sisir_terpasang);
-    const sisirKondisi = (sisirRow?.["Kondisi Sisir"] || "").toUpperCase();
+    const sisirRow = stok.find((s) => s.id_sisir === installData.id_sisir_terpasang);
+    const sisirKondisi = (sisirRow?.kondisi_sisir || "").toUpperCase();
     if (sisirKondisi.includes("RUSAK")) {
       toast.error("Sisir dalam kondisi RUSAK tidak bisa dipasang!");
       return;
     }
 
     const tanggal = new Date().toISOString();
-    const nomorDestiny = sisirRow?.["Nomor sisir Destiny"] || sisirRow?.Nomor_sisir_Destiny || "";
+    const nomorDestiny = sisirRow?.nomor_sisir_destiny || "";
 
     try {
       setMachines((prev) =>
         prev.map((m) =>
-          m.Nomer_Mesin === selectedMachine.Nomer_Mesin
-            ? { ...m, ID_sisir_terpasang: installData.ID_sisir_terpasang, Nomor_sisir_Destiny: nomorDestiny, Tanggal_Pasang: tanggal, Durasi_Pakai: "" }
+          m.nomer_mesin === selectedMachine.nomer_mesin
+            ? { ...m, id_sisir_terpasang: installData.id_sisir_terpasang, nomor_sisir_destiny: nomorDestiny, tanggal_pasang: tanggal }
             : m
         )
       );
 
-      setInstallData({ ID_sisir_terpasang: "", Nama_Mekanik: "" });
+      setInstallData({ id_sisir_terpasang: "", nama_mekanik: "" });
       setIsDetailOpen(false);
       setSelectedMachine(null);
 
       await addRowToSheet("HISTORY_PASANG", {
-        Tanggal_Ganti: tanggal,
-        Nomor_Mesin: selectedMachine.Nomer_Mesin,
-        ID_Sisir: installData.ID_sisir_terpasang,
-        Nomor_sisir_Destiny: nomorDestiny,
-        Nama_Mekanik: installData.Nama_Mekanik,
+        tanggal_ganti: tanggal,
+        nomor_mesin: selectedMachine.nomer_mesin,
+        id_sisir: installData.id_sisir_terpasang,
+        nomor_sisir_destiny: nomorDestiny,
+        nama_mekanik: installData.nama_mekanik,
       });
 
       toast.success("Sisir berhasil dipasang!");
@@ -289,7 +287,7 @@ export default function ManagePage() {
     } catch (err: any) {
       setMachines((prev) =>
         prev.map((m) =>
-          m.Nomer_Mesin === selectedMachine.Nomer_Mesin ? selectedMachine : m
+          m.nomer_mesin === selectedMachine.nomer_mesin ? selectedMachine : m
         )
       );
       toast.error(err.message);
@@ -298,44 +296,43 @@ export default function ManagePage() {
   };
 
   const handleRemoveReed = async () => {
-    if (!selectedMachine || !selectedMachine.ID_sisir_terpasang) return;
-    if (!removeData.Kondisi_SIsir || !removeData.Nama_Mekanik) {
+    if (!selectedMachine || !selectedMachine.id_sisir_terpasang) return;
+    if (!removeData.kondisi_sisir || !removeData.nama_mekanik) {
       toast.error("Pilih Kondisi dan isi nama Mekanik");
       return;
     }
 
     const tanggal = new Date().toISOString();
-    const currentSisir   = selectedMachine.ID_sisir_terpasang;
-    const currentMesin   = selectedMachine.Nomer_Mesin;
-    const currentDestiny = selectedMachine.Nomor_sisir_Destiny || (selectedMachine as any)["Nomor sisir Destiny"] || "";
+    const currentSisir   = selectedMachine.id_sisir_terpasang;
+    const currentMesin   = selectedMachine.nomer_mesin;
+    const currentDestiny = selectedMachine.nomor_sisir_destiny || "";
 
     try {
       setMachines((prev) =>
         prev.map((m) =>
-          m.Nomer_Mesin === currentMesin
-            ? { ...m, ID_sisir_terpasang: "-", Nomor_sisir_Destiny: "-", Tanggal_Pasang: "-", Durasi_Pakai: "-" }
+          m.nomer_mesin === currentMesin
+            ? { ...m, id_sisir_terpasang: "-", nomor_sisir_destiny: "-", tanggal_pasang: null }
             : m
         )
       );
 
       setIsDetailOpen(false);
       setSelectedMachine(null);
-      setRemoveData({ Kondisi_SIsir: "", Nama_Mekanik: "" });
+      setRemoveData({ kondisi_sisir: "", nama_mekanik: "" });
 
       await Promise.all([
-        updateRowInSheet("LIVE_TRACKING", "Nomer_Mesin", currentMesin, {
-          ID_sisir_terpasang: "-",
-          Nomor_sisir_Destiny: "-",
-          Tanggal_Pasang: "-",
-          Durasi_Pakai: "-",
+        updateRowInSheet("LIVE_TRACKING", "nomer_mesin", currentMesin, {
+          id_sisir_terpasang: "-",
+          nomor_sisir_destiny: "-",
+          tanggal_pasang: null,
         }),
         addRowToSheet("HISTORY_LEPAS", {
-          Tanggal_Lepas: tanggal,
-          Nomor_Mesin: currentMesin,
-          ID_Sisir: currentSisir,
-          Nomor_sisir_Destiny: currentDestiny,
-          Nama_Mekanik: removeData.Nama_Mekanik,
-          Kondisi_SIsir: removeData.Kondisi_SIsir,
+          tanggal_lepas: tanggal,
+          nomor_mesin: currentMesin,
+          id_sisir: currentSisir,
+          nomor_sisir_destiny: currentDestiny,
+          nama_mekanik: removeData.nama_mekanik,
+          kondisi_sisir: removeData.kondisi_sisir,
         }),
       ]);
 
@@ -343,7 +340,7 @@ export default function ManagePage() {
       loadData();
     } catch (err: any) {
       setMachines((prev) =>
-        prev.map((m) => (m.Nomer_Mesin === currentMesin ? selectedMachine : m))
+        prev.map((m) => (m.nomer_mesin === currentMesin ? selectedMachine : m))
       );
       toast.error(`Gagal melepas sisir: ${err.message}`);
       loadData();
@@ -353,15 +350,15 @@ export default function ManagePage() {
   const filteredMachines = machines.filter((machine) => {
     const query = searchQuery.toLowerCase().trim();
     if (!query) return true;
-    const nomerMesin = machine.Nomer_Mesin?.toLowerCase() || "";
-    const nomorSisir = (machine.Nomor_sisir_Destiny || (machine as any)["Nomor sisir Destiny"] || machine.ID_sisir_terpasang || "").toLowerCase();
-    const idSisir = (machine.ID_sisir_terpasang || "").toLowerCase();
-    const posisi = (machine.Posisi_Gedung || "").toLowerCase();
+    const nomerMesin = machine.nomer_mesin?.toLowerCase() || "";
+    const nomorSisir = (machine.nomor_sisir_destiny || machine.id_sisir_terpasang || "").toLowerCase();
+    const idSisir = (machine.id_sisir_terpasang || "").toLowerCase();
+    const posisi = (machine.posisi_gedung || "").toLowerCase();
     return nomerMesin.includes(query) || nomorSisir.includes(query) || idSisir.includes(query) || posisi.includes(query);
   });
 
   const machineHistory = historyData
-    .filter((h) => h.Nomor_Mesin === selectedMachine?.Nomer_Mesin)
+    .filter((h) => h.nomor_mesin === selectedMachine?.nomer_mesin)
     .slice(0, 10);
 
   const availableReeds = stok.filter(isGudang);
@@ -400,19 +397,19 @@ export default function ManagePage() {
               <div className="space-y-4 py-4">
                 <div className="space-y-2">
                   <Label>No Mesin</Label>
-                  <Input value={newMachine.Nomer_Mesin} onChange={(e) => setNewMachine({ ...newMachine, Nomer_Mesin: e.target.value })} placeholder="Contoh: M-01" />
+                  <Input value={newMachine.nomer_mesin} onChange={(e) => setNewMachine({ ...newMachine, nomer_mesin: e.target.value })} placeholder="Contoh: M-01" />
                 </div>
                 <div className="space-y-2">
                   <Label>SN Mesin</Label>
-                  <Input value={newMachine.SN_Mesin} onChange={(e) => setNewMachine({ ...newMachine, SN_Mesin: e.target.value })} placeholder="Serial Number" />
+                  <Input value={newMachine.sn_mesin} onChange={(e) => setNewMachine({ ...newMachine, sn_mesin: e.target.value })} placeholder="Serial Number" />
                 </div>
                 <div className="space-y-2">
                   <Label>Posisi Gedung</Label>
-                  <Input value={newMachine.Posisi_Gedung} onChange={(e) => setNewMachine({ ...newMachine, Posisi_Gedung: e.target.value })} placeholder="Contoh: Shed3.1" />
+                  <Input value={newMachine.posisi_gedung} onChange={(e) => setNewMachine({ ...newMachine, posisi_gedung: e.target.value })} placeholder="Contoh: Shed3.1" />
                 </div>
                 <div className="space-y-2">
                   <Label>Jenis Mesin</Label>
-                  <Input value={newMachine.Jenis_Mesin} onChange={(e) => setNewMachine({ ...newMachine, Jenis_Mesin: e.target.value })} placeholder="Contoh: PICANOL AJL" />
+                  <Input value={newMachine.jenis_mesin} onChange={(e) => setNewMachine({ ...newMachine, jenis_mesin: e.target.value })} placeholder="Contoh: PICANOL AJL" />
                 </div>
               </div>
               <DialogFooter>
@@ -446,24 +443,24 @@ export default function ManagePage() {
       ) : (
         <div className="grid gap-2">
           {filteredMachines.map((machine) => {
-            const hasReed = machine.ID_sisir_terpasang &&
-                            machine.ID_sisir_terpasang.trim() !== "" &&
-                            machine.ID_sisir_terpasang.trim() !== "-";
-            const durasi = machine.Durasi_Pakai || calculateDuration(machine.Tanggal_Pasang);
+            const hasReed = machine.id_sisir_terpasang &&
+                            machine.id_sisir_terpasang.trim() !== "" &&
+                            machine.id_sisir_terpasang.trim() !== "-";
+            const durasi = machine.durasi_pakai || calculateDuration(machine.tanggal_pasang || "");
             return (
               <div
-                key={machine.Nomer_Mesin}
+                key={machine.nomer_mesin}
                 onClick={() => { setSelectedMachine(machine); setIsDetailOpen(true); }}
                 className="bg-card border border-border p-4 rounded-xl cursor-pointer hover:border-primary/50 transition-colors flex items-center justify-between"
               >
                 <div className="min-w-0 flex-1">
-                  <div className="font-bold">{machine.Nomer_Mesin}</div>
+                  <div className="font-bold">{machine.nomer_mesin}</div>
                   <div className="text-sm text-muted-foreground truncate">
-                    {machine.Jenis_Mesin} · SN: {String(machine.SN_Mesin) || "-"}
+                    {machine.jenis_mesin} · SN: {String(machine.sn_mesin) || "-"}
                   </div>
-                  {machine.Posisi_Gedung && (
+                  {machine.posisi_gedung && (
                     <div className="text-xs font-medium text-emerald-600 mt-1 flex items-center gap-1">
-                      <MapPin className="w-3 h-3" /> {machine.Posisi_Gedung}
+                      <MapPin className="w-3 h-3" /> {machine.posisi_gedung}
                     </div>
                   )}
                 </div>
@@ -474,7 +471,7 @@ export default function ManagePage() {
                   {hasReed && (
                     <>
                       <div className="font-mono text-xs font-medium text-foreground bg-muted/60 px-1.5 py-0.5 rounded">
-                        {machine.Nomor_sisir_Destiny || (machine as any)["Nomor sisir Destiny"] || machine.ID_sisir_terpasang}
+                        {machine.nomor_sisir_destiny || machine.id_sisir_terpasang}
                       </div>
                       <div className="text-[10px] text-amber-500 flex items-center gap-1">
                         <Clock className="w-3 h-3" />
@@ -495,7 +492,7 @@ export default function ManagePage() {
           {selectedMachine && (
             <>
               <DialogHeader className="flex flex-row items-center justify-between border-b pb-2">
-                <DialogTitle>Mesin {selectedMachine.Nomer_Mesin}</DialogTitle>
+                <DialogTitle>Mesin {selectedMachine.nomer_mesin}</DialogTitle>
                 {isAdmin && (
                   <Button
                     size="sm"
@@ -509,34 +506,34 @@ export default function ManagePage() {
               </DialogHeader>
 
               <div className="grid grid-cols-2 gap-3 bg-muted/30 p-3 rounded-lg text-sm">
-                <div><p className="text-xs text-muted-foreground">Jenis</p><p className="font-medium">{selectedMachine.Jenis_Mesin || "-"}</p></div>
-                <div><p className="text-xs text-muted-foreground">SN Mesin</p><p className="font-medium">{String(selectedMachine.SN_Mesin) || "-"}</p></div>
+                <div><p className="text-xs text-muted-foreground">Jenis</p><p className="font-medium">{selectedMachine.jenis_mesin || "-"}</p></div>
+                <div><p className="text-xs text-muted-foreground">SN Mesin</p><p className="font-medium">{String(selectedMachine.sn_mesin) || "-"}</p></div>
                 <div className="col-span-2 border-t pt-2 mt-1 flex items-center gap-2">
                   <MapPin className="w-3.5 h-3.5 text-muted-foreground" />
                   <div>
                     <p className="text-xs text-muted-foreground">Posisi Gedung</p>
-                    <p className="font-medium text-emerald-600">{selectedMachine.Posisi_Gedung || "-"}</p>
+                    <p className="font-medium text-emerald-600">{selectedMachine.posisi_gedung || "-"}</p>
                   </div>
                 </div>
                 <div className="border-t pt-2 mt-1">
                   <p className="text-xs text-muted-foreground">Sisir Terpasang</p>
                   <p className="font-medium font-mono text-primary">
-                    {selectedMachine.ID_sisir_terpasang && selectedMachine.ID_sisir_terpasang.trim() !== "-"
-                      ? selectedMachine.Nomor_sisir_Destiny || (selectedMachine as any)["Nomor sisir Destiny"] || selectedMachine.ID_sisir_terpasang
+                    {selectedMachine.id_sisir_terpasang && selectedMachine.id_sisir_terpasang.trim() !== "-"
+                      ? selectedMachine.nomor_sisir_destiny || selectedMachine.id_sisir_terpasang
                       : "Non Aktif"}
                   </p>
                 </div>
                 <div className="border-t pt-2 mt-1">
                   <p className="text-xs text-muted-foreground">Durasi Pasang</p>
                   <p className="font-medium text-amber-500">
-                    {selectedMachine.Durasi_Pakai
-                      ? selectedMachine.Durasi_Pakai
-                      : selectedMachine.Tanggal_Pasang
-                        ? `${calculateDuration(selectedMachine.Tanggal_Pasang)}`
+                    {selectedMachine.durasi_pakai
+                      ? selectedMachine.durasi_pakai
+                      : selectedMachine.tanggal_pasang
+                        ? `${calculateDuration(selectedMachine.tanggal_pasang)}`
                         : "-"}
                   </p>
-                  {selectedMachine.Tanggal_Pasang && (
-                    <p className="text-xs text-muted-foreground">{formatDate(selectedMachine.Tanggal_Pasang)}</p>
+                  {selectedMachine.tanggal_pasang && (
+                    <p className="text-xs text-muted-foreground">{formatDate(selectedMachine.tanggal_pasang)}</p>
                   )}
                 </div>
               </div>
@@ -550,7 +547,7 @@ export default function ManagePage() {
 
               {isAdmin && (
                 <div className="flex gap-2">
-                  {(!selectedMachine.ID_sisir_terpasang || selectedMachine.ID_sisir_terpasang.trim() === "" || selectedMachine.ID_sisir_terpasang.trim() === "-") ? (
+                  {(!selectedMachine.id_sisir_terpasang || selectedMachine.id_sisir_terpasang.trim() === "" || selectedMachine.id_sisir_terpasang.trim() === "-") ? (
                     <Dialog>
                       <DialogTrigger asChild>
                         <Button className="flex-1">
@@ -558,20 +555,19 @@ export default function ManagePage() {
                         </Button>
                       </DialogTrigger>
                       <DialogContent>
-                        <DialogHeader><DialogTitle>Pasang Sisir ke {selectedMachine.Nomer_Mesin}</DialogTitle></DialogHeader>
+                        <DialogHeader><DialogTitle>Pasang Sisir ke {selectedMachine.nomer_mesin}</DialogTitle></DialogHeader>
                         <div className="space-y-4 py-4">
                           <div className="space-y-2">
                             <Label>Pilih Sisir (Stok Gudang)</Label>
-                            {/* ✅ Diganti dari Select dropdown menjadi searchable combobox */}
                             <ReedCombobox
                               reeds={availableReeds}
-                              value={installData.ID_sisir_terpasang}
-                              onChange={(id) => setInstallData({ ...installData, ID_sisir_terpasang: id })}
+                              value={installData.id_sisir_terpasang}
+                              onChange={(id) => setInstallData({ ...installData, id_sisir_terpasang: id })}
                             />
                           </div>
                           <div className="space-y-2">
                             <Label>Nama Mekanik</Label>
-                            <Input value={installData.Nama_Mekanik} onChange={(e) => setInstallData({ ...installData, Nama_Mekanik: e.target.value })} placeholder="Nama Mekanik" />
+                            <Input value={installData.nama_mekanik} onChange={(e) => setInstallData({ ...installData, nama_mekanik: e.target.value })} placeholder="Nama Mekanik" />
                           </div>
                         </div>
                         <DialogFooter>
@@ -588,12 +584,12 @@ export default function ManagePage() {
                       </DialogTrigger>
                       <DialogContent>
                         <DialogHeader>
-                          <DialogTitle>Lepas Sisir {selectedMachine.Nomor_sisir_Destiny || (selectedMachine as any)["Nomor sisir Destiny"] || selectedMachine.ID_sisir_terpasang}</DialogTitle>
+                          <DialogTitle>Lepas Sisir {selectedMachine.nomor_sisir_destiny || selectedMachine.id_sisir_terpasang}</DialogTitle>
                         </DialogHeader>
                         <div className="space-y-4 py-4">
                           <div className="space-y-2">
                             <Label>Kondisi Sisir Setelah Dilepas</Label>
-                            <Select onValueChange={(v) => setRemoveData({ ...removeData, Kondisi_SIsir: v })}>
+                            <Select onValueChange={(v) => setRemoveData({ ...removeData, kondisi_sisir: v })}>
                               <SelectTrigger><SelectValue placeholder="Pilih Kondisi" /></SelectTrigger>
                               <SelectContent>
                                 <SelectItem value="BAIK">Baik → Kembali ke Gudang</SelectItem>
@@ -604,7 +600,7 @@ export default function ManagePage() {
                           </div>
                           <div className="space-y-2">
                             <Label>Nama Mekanik</Label>
-                            <Input value={removeData.Nama_Mekanik} onChange={(e) => setRemoveData({ ...removeData, Nama_Mekanik: e.target.value })} placeholder="Nama Mekanik" />
+                            <Input value={removeData.nama_mekanik} onChange={(e) => setRemoveData({ ...removeData, nama_mekanik: e.target.value })} placeholder="Nama Mekanik" />
                           </div>
                         </div>
                         <DialogFooter>
@@ -614,14 +610,14 @@ export default function ManagePage() {
                     </Dialog>
                   )}
 
-                  <Button variant="outline" onClick={() => generateMachineHistoryPDF(selectedMachine.Nomer_Mesin, selectedMachine.Jenis_Mesin, machineHistory)}>
+                  <Button variant="outline" onClick={() => generateMachineHistoryPDF(selectedMachine.nomer_mesin, selectedMachine.jenis_mesin, machineHistory)}>
                     <FileText className="w-4 h-4 mr-2" /> PDF
                   </Button>
                 </div>
               )}
 
               {!isAdmin && (
-                <Button variant="outline" onClick={() => generateMachineHistoryPDF(selectedMachine.Nomer_Mesin, selectedMachine.Jenis_Mesin, machineHistory)}>
+                <Button variant="outline" onClick={() => generateMachineHistoryPDF(selectedMachine.nomer_mesin, selectedMachine.jenis_mesin, machineHistory)}>
                   <FileText className="w-4 h-4 mr-2" /> Cetak PDF Riwayat
                 </Button>
               )}
@@ -641,11 +637,11 @@ export default function ManagePage() {
                         style={{ borderColor: h.type === "PASANG" ? "hsl(var(--primary))" : "hsl(var(--destructive))" }}
                       >
                         <div className="flex justify-between font-medium">
-                          <span>{h.type} — {h.Nomor_sisir_Destiny || h.ID_Sisir}</span>
+                          <span>{h.type} — {h.nomor_sisir_destiny || h.id_sisir}</span>
                           <span className="text-muted-foreground text-xs">{formatDate(h.tanggal)}</span>
                         </div>
                         <div className="text-muted-foreground text-xs mt-0.5">
-                          Mekanik: {h.Nama_Mekanik}{h.Kondisi_SIsir ? ` · ${h.Kondisi_SIsir}` : ""}
+                          Mekanik: {h.nama_mekanik}{h.kondisi_sisir ? ` · ${h.kondisi_sisir}` : ""}
                         </div>
                       </div>
                     ))}
@@ -667,22 +663,22 @@ export default function ManagePage() {
             <div className="space-y-2">
               <Label>Nama / Nomor Mesin</Label>
               <Input
-                value={editMachineData.Nomer_Mesin}
-                onChange={(e) => setEditMachineData({ ...editMachineData, Nomer_Mesin: e.target.value })}
+                value={editMachineData.nomer_mesin}
+                onChange={(e) => setEditMachineData({ ...editMachineData, nomer_mesin: e.target.value })}
                 placeholder="Contoh: AC-01"
               />
             </div>
             <div className="space-y-2">
               <Label>Posisi Gedung / Lokasi</Label>
               <Input
-                value={editMachineData.Posisi_Gedung}
-                onChange={(e) => setEditMachineData({ ...editMachineData, Posisi_Gedung: e.target.value })}
+                value={editMachineData.posisi_gedung}
+                onChange={(e) => setEditMachineData({ ...editMachineData, posisi_gedung: e.target.value })}
                 placeholder="Contoh: SHED3.1"
               />
             </div>
             <div className="bg-muted/50 p-3 rounded-xl text-xs text-muted-foreground space-y-1">
-              <p><strong>Tipe Mesin:</strong> {selectedMachine?.Jenis_Mesin || "-"}</p>
-              <p><strong>Serial Number:</strong> {String(selectedMachine?.SN_Mesin || "-")}</p>
+              <p><strong>Tipe Mesin:</strong> {selectedMachine?.jenis_mesin || "-"}</p>
+              <p><strong>Serial Number:</strong> {String(selectedMachine?.sn_mesin || "-")}</p>
               <p className="text-[10px] text-amber-600 font-medium mt-1.5">* Tipe dan SN bersifat paten & tidak dapat diubah di sini.</p>
             </div>
           </div>

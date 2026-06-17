@@ -7,11 +7,10 @@ import { AlertCircle, Server, CheckCircle2, XCircle, PackageX, Calendar, Clock, 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
-// ✅ Disamakan dengan getEffectiveStatus di stok.tsx
-// agar Dashboard dan Stok selalu konsisten menghitung status sisir
+// Disamakan dengan getEffectiveStatus di stok.tsx — pakai snake_case
 const getEffectiveStatus = (item: MasterStok): string => {
-  const status = (item["Status Saat Ini"] || "").trim().toUpperCase();
-  const kondisi = (item["Kondisi Sisir"] || "").trim().toUpperCase();
+  const status = (item.status_saat_ini || "").trim().toUpperCase();
+  const kondisi = (item.kondisi_sisir || "").trim().toUpperCase();
   if (status.includes("DIPAKAI") || status.includes("PAKAI")) return "Dipakai";
   if (status.includes("SERVICE") || status.includes("REPAIR") || status.includes("SUPPLIER")) return "Service";
   if (status.includes("RUSAK") || kondisi.includes("RUSAK")) return "Rusak";
@@ -54,21 +53,20 @@ export default function DashboardPage() {
     try {
       const sheets = await fetchMultipleSheets(["LIVE_TRACKING", "MASTER_STOK"]);
       const liveTracking: LiveTracking[] = (sheets["LIVE_TRACKING"] || []).filter(
-        (m: LiveTracking) => m.Nomer_Mesin && m.Nomer_Mesin.trim() !== ""
+        (m: LiveTracking) => m.nomer_mesin && m.nomer_mesin.trim() !== ""
       );
       const masterStok: MasterStok[] = (sheets["MASTER_STOK"] || []).filter(
-        (s: MasterStok) => s["ID SISIR"] && s["ID SISIR"].trim() !== ""
+        (s: MasterStok) => s.id_sisir && s.id_sisir.trim() !== ""
       );
 
       const totalMesin = liveTracking.length;
       const mesinAktif = liveTracking.filter(
-        (m) => m.ID_sisir_terpasang &&
-               m.ID_sisir_terpasang.trim() !== "" &&
-               m.ID_sisir_terpasang.trim() !== "-"
+        (m) => m.id_sisir_terpasang &&
+               m.id_sisir_terpasang.trim() !== "" &&
+               m.id_sisir_terpasang.trim() !== "-"
       ).length;
       const mesinKosong = totalMesin - mesinAktif;
 
-      // ✅ Pakai getEffectiveStatus yang sama dengan stok.tsx — tidak ada lagi miss antara Dashboard & Stok
       const stokGudang = masterStok.filter((s) => getEffectiveStatus(s) === "Gudang").length;
       const sisirRusak = masterStok.filter((s) => getEffectiveStatus(s) === "Rusak").length;
 
@@ -89,10 +87,10 @@ export default function DashboardPage() {
     try {
       const sheets = await fetchMultipleSheets(["HISTORY_PASANG", "HISTORY_LEPAS"]);
       const pasang = (sheets["HISTORY_PASANG"] || []).filter(
-        (h: any) => h.Nomor_Mesin?.trim().toLowerCase() === nomerMesin.trim().toLowerCase()
+        (h: any) => h.nomor_mesin?.trim().toLowerCase() === nomerMesin.trim().toLowerCase()
       );
       const lepas = (sheets["HISTORY_LEPAS"] || []).filter(
-        (h: any) => h.Nomor_Mesin?.trim().toLowerCase() === nomerMesin.trim().toLowerCase()
+        (h: any) => h.nomor_mesin?.trim().toLowerCase() === nomerMesin.trim().toLowerCase()
       );
       setHistoryData({ pasang, lepas });
     } catch (err) {
@@ -106,10 +104,10 @@ export default function DashboardPage() {
     ? machines.filter((m) => {
         const q = searchQuery.toLowerCase();
         return (
-          m.Nomer_Mesin?.toLowerCase().includes(q) ||
-          m.ID_sisir_terpasang?.toLowerCase().includes(q) ||
-          (m.Nomor_sisir_Destiny || m["Nomor sisir Destiny"] || "").toLowerCase().includes(q) ||
-          m.Posisi_Gedung?.toLowerCase().includes(q)
+          m.nomer_mesin?.toLowerCase().includes(q) ||
+          m.id_sisir_terpasang?.toLowerCase().includes(q) ||
+          (m.nomor_sisir_destiny || "").toLowerCase().includes(q) ||
+          m.posisi_gedung?.toLowerCase().includes(q)
         );
       })
     : machines;
@@ -202,15 +200,15 @@ export default function DashboardPage() {
         ) : (
           <div className="grid gap-2 grid-cols-2 xs:grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6">
             {filteredMachines.map((machine) => {
-              const hasReed = machine.ID_sisir_terpasang &&
-                              machine.ID_sisir_terpasang.trim() !== "" &&
-                              machine.ID_sisir_terpasang.trim() !== "-";
-              const nomorSisirDisplay = machine.Nomor_sisir_Destiny || (machine as any)["Nomor sisir Destiny"] || machine.ID_sisir_terpasang;
+              const hasReed = machine.id_sisir_terpasang &&
+                              machine.id_sisir_terpasang.trim() !== "" &&
+                              machine.id_sisir_terpasang.trim() !== "-";
+              const nomorSisirDisplay = machine.nomor_sisir_destiny || machine.id_sisir_terpasang;
 
               return (
                 <div
-                  key={machine.Nomer_Mesin}
-                  onClick={() => handleMachineClick(machine.Nomer_Mesin)}
+                  key={machine.nomer_mesin}
+                  onClick={() => handleMachineClick(machine.nomer_mesin)}
                   className={`rounded-xl border p-2 flex flex-col justify-between min-h-[90px] transition-all cursor-pointer hover:scale-[1.03] active:scale-95 duration-200 shadow-sm hover:shadow-md ${
                     hasReed ? "border-primary/40 bg-primary/5" : "border-border/50 bg-card opacity-70"
                   }`}
@@ -218,10 +216,10 @@ export default function DashboardPage() {
                   <div className="flex items-center justify-between gap-1">
                     <div className="flex items-center gap-1.5 min-w-0">
                       <div className={`w-2 h-2 rounded-full shrink-0 ${hasReed ? "bg-primary shadow-[0_0_6px_rgba(34,197,94,0.6)]" : "bg-muted-foreground/40"}`} />
-                      <p className="font-bold text-xs tracking-tight truncate">{machine.Nomer_Mesin}</p>
+                      <p className="font-bold text-xs tracking-tight truncate">{machine.nomer_mesin}</p>
                     </div>
                     <span className="text-[9px] text-muted-foreground truncate opacity-60">
-                      {machine.Jenis_Mesin?.split(" ")[0]}
+                      {machine.jenis_mesin?.split(" ")[0]}
                     </span>
                   </div>
 
@@ -230,16 +228,16 @@ export default function DashboardPage() {
                     <p className={`font-mono text-[10px] font-semibold tracking-tight truncate w-full ${hasReed ? "text-primary" : "text-muted-foreground/60 italic"}`}>
                       {hasReed ? nomorSisirDisplay : "Kosong"}
                     </p>
-                    {hasReed && machine.Durasi_Pakai && (
+                    {hasReed && machine.tanggal_pasang && (
                       <p className="text-[9px] text-amber-500 flex items-center gap-0.5 mt-0.5">
                         <Clock className="w-2.5 h-2.5" />
-                        {machine.Durasi_Pakai}
+                        {formatDate(machine.tanggal_pasang)}
                       </p>
                     )}
-                    {hasReed && machine.Posisi_Gedung && (
+                    {hasReed && machine.posisi_gedung && (
                       <p className="text-[9px] text-muted-foreground flex items-center gap-0.5">
                         <MapPin className="w-2.5 h-2.5" />
-                        {machine.Posisi_Gedung}
+                        {machine.posisi_gedung}
                       </p>
                     )}
                   </div>
@@ -270,7 +268,7 @@ export default function DashboardPage() {
               {loadingHistory ? (
                 <div className="flex flex-col py-12 items-center justify-center gap-2">
                   <Spinner className="w-6 h-6 text-primary" />
-                  <p className="text-xs text-muted-foreground">Menarik log dari Google Sheets...</p>
+                  <p className="text-xs text-muted-foreground">Menarik data dari Supabase...</p>
                 </div>
               ) : historyData.pasang.length === 0 && historyData.lepas.length === 0 ? (
                 <div className="text-center py-12 text-muted-foreground">
@@ -288,14 +286,14 @@ export default function DashboardPage() {
                         {historyData.pasang.map((log, index) => (
                           <div key={index} className="p-2.5 rounded-lg border border-border/60 bg-muted/20 text-xs space-y-1">
                             <div className="flex justify-between font-medium">
-                              <span className="text-card-foreground">Ukuran: {log.Nomor_sisir_Destiny || "-"}</span>
+                              <span className="text-card-foreground">Ukuran: {log.nomor_sisir_destiny || "-"}</span>
                               <span className="text-muted-foreground font-mono text-[10px] flex items-center gap-1">
-                                <Calendar className="h-3 w-3" /> {formatDate(log.Tanggal_Ganti)}
+                                <Calendar className="h-3 w-3" /> {formatDate(log.tanggal_ganti)}
                               </span>
                             </div>
                             <div className="flex justify-between text-muted-foreground text-[11px]">
-                              <span>ID: <strong className="font-mono">{log.ID_Sisir}</strong></span>
-                              <span className="flex items-center gap-0.5"><User className="h-3 w-3" /> {log.Nama_Mekanik || "Mekanik"}</span>
+                              <span>ID: <strong className="font-mono">{log.id_sisir}</strong></span>
+                              <span className="flex items-center gap-0.5"><User className="h-3 w-3" /> {log.nama_mekanik || "Mekanik"}</span>
                             </div>
                           </div>
                         ))}
@@ -312,18 +310,18 @@ export default function DashboardPage() {
                         {historyData.lepas.map((log, index) => (
                           <div key={index} className="p-2.5 rounded-lg border border-border/60 bg-muted/20 text-xs space-y-1">
                             <div className="flex justify-between font-medium">
-                              <span className="text-card-foreground">Ukuran: {log.Nomor_sisir_Destiny || "-"}</span>
+                              <span className="text-card-foreground">Ukuran: {log.nomor_sisir_destiny || "-"}</span>
                               <span className="text-muted-foreground font-mono text-[10px] flex items-center gap-1">
-                                <Calendar className="h-3 w-3" /> {formatDate(log.Tanggal_Lepas)}
+                                <Calendar className="h-3 w-3" /> {formatDate(log.tanggal_lepas)}
                               </span>
                             </div>
                             <div className="flex justify-between text-muted-foreground text-[11px]">
-                              <span>ID: <strong className="font-mono">{log.ID_Sisir}</strong></span>
-                              <span>Kondisi: <strong className={log.Kondisi_SIsir?.toLowerCase().includes("rusak") ? "text-destructive" : "text-yellow-500"}>{log.Kondisi_SIsir || "OK"}</strong></span>
+                              <span>ID: <strong className="font-mono">{log.id_sisir}</strong></span>
+                              <span>Kondisi: <strong className={log.kondisi_sisir?.toLowerCase().includes("rusak") ? "text-destructive" : "text-yellow-500"}>{log.kondisi_sisir || "OK"}</strong></span>
                             </div>
-                            {log.Nama_Mekanik && (
+                            {log.nama_mekanik && (
                               <div className="text-muted-foreground text-[10px] flex items-center gap-1">
-                                <User className="h-3 w-3" /> {log.Nama_Mekanik}
+                                <User className="h-3 w-3" /> {log.nama_mekanik}
                               </div>
                             )}
                           </div>

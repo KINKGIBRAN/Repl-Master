@@ -28,20 +28,20 @@ export default function HistoryPage() {
       const combined: CombinedHistory[] = [
         ...hpData.map((h) => ({
           type: "PASANG" as const,
-          Nomor_Mesin: h.Nomor_Mesin,
-          ID_Sisir: h.ID_Sisir,
-          Nomor_sisir_Destiny: h.Nomor_sisir_Destiny,
-          Nama_Mekanik: h.Nama_Mekanik,
-          tanggal: h.Tanggal_Ganti,
+          nomor_mesin: h.nomor_mesin,
+          id_sisir: h.id_sisir,
+          nomor_sisir_destiny: h.nomor_sisir_destiny,
+          nama_mekanik: h.nama_mekanik,
+          tanggal: h.tanggal_ganti,
         })),
         ...hlData.map((h) => ({
           type: "LEPAS" as const,
-          Nomor_Mesin: h.Nomor_Mesin,
-          ID_Sisir: h.ID_Sisir,
-          Nomor_sisir_Destiny: h.Nomor_sisir_Destiny,
-          Nama_Mekanik: h.Nama_Mekanik,
-          tanggal: h.Tanggal_Lepas,
-          Kondisi_SIsir: h.Kondisi_SIsir,
+          nomor_mesin: h.nomor_mesin,
+          id_sisir: h.id_sisir,
+          nomor_sisir_destiny: h.nomor_sisir_destiny,
+          nama_mekanik: h.nama_mekanik,
+          tanggal: h.tanggal_lepas,
+          kondisi_sisir: h.kondisi_sisir,
         })),
       ];
       combined.sort((a, b) => new Date(b.tanggal).getTime() - new Date(a.tanggal).getTime());
@@ -60,18 +60,16 @@ export default function HistoryPage() {
   const filteredHistory = (() => {
     let list = historyData;
 
-    // Filter by type
     if (filter === "PASANG") list = list.filter((h) => h.type === "PASANG");
     if (filter === "LEPAS")  list = list.filter((h) => h.type === "LEPAS");
 
-    // Search by nomor mesin atau nomor sisir
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
       list = list.filter(
         (h) =>
-          h.Nomor_Mesin?.toLowerCase().includes(q) ||
-          h.ID_Sisir?.toLowerCase().includes(q) ||
-          h.Nomor_sisir_Destiny?.toLowerCase().includes(q)
+          h.nomor_mesin?.toLowerCase().includes(q) ||
+          h.id_sisir?.toLowerCase().includes(q) ||
+          h.nomor_sisir_destiny?.toLowerCase().includes(q)
       );
     }
 
@@ -88,7 +86,7 @@ export default function HistoryPage() {
     if (item.type === "PASANG") {
       return <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-primary/20 text-primary border border-primary/40">INSTALLED</span>;
     }
-    if (item.Kondisi_SIsir === "RUSAK") {
+    if (item.kondisi_sisir === "RUSAK") {
       return <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-blue-500/20 text-blue-400 border border-blue-500/40">SERVICED</span>;
     }
     return <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-destructive/20 text-destructive border border-destructive/40">REMOVED</span>;
@@ -96,7 +94,7 @@ export default function HistoryPage() {
 
   const getIcon = (item: CombinedHistory) => {
     if (item.type === "PASANG") return <ArrowRightCircle className="w-5 h-5 text-primary" />;
-    if (item.Kondisi_SIsir === "RUSAK") return <Wrench className="w-5 h-5 text-blue-400" />;
+    if (item.kondisi_sisir === "RUSAK") return <Wrench className="w-5 h-5 text-blue-400" />;
     return <ArrowDownCircle className="w-5 h-5 text-destructive" />;
   };
 
@@ -124,7 +122,6 @@ export default function HistoryPage() {
     <div className="p-4 space-y-4 pb-24">
       <h1 className="text-2xl font-bold tracking-tight">Activity Log</h1>
 
-      {/* Search Bar */}
       <div className="relative">
         <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground/70" />
         <Input
@@ -144,7 +141,6 @@ export default function HistoryPage() {
         )}
       </div>
 
-      {/* Filter Tabs */}
       <Tabs value={filter} onValueChange={(v) => setFilter(v as FilterKey)}>
         <TabsList className="w-full grid grid-cols-3 h-auto">
           {(["Semua", "PASANG", "LEPAS"] as FilterKey[]).map((tab) => (
@@ -175,14 +171,14 @@ export default function HistoryPage() {
                   <span className="text-xs text-muted-foreground shrink-0">{item.tanggal}</span>
                 </div>
                 <p className="text-sm font-medium">
-                  Sisir <span className="font-mono text-primary">{item.ID_Sisir}</span>
+                  Sisir <span className="font-mono text-primary">{item.id_sisir}</span>
                   {" "}{item.type === "PASANG" ? "dipasang ke" : "dilepas dari"}{" "}
-                  <span className="font-mono text-primary">{item.Nomor_Mesin}</span>
+                  <span className="font-mono text-primary">{item.nomor_mesin}</span>
                 </p>
                 <div className="text-xs text-muted-foreground mt-1 space-y-0.5">
-                  {item.Nomor_sisir_Destiny && <p>Destiny: {item.Nomor_sisir_Destiny}</p>}
-                  <p>Mekanik: {item.Nama_Mekanik}</p>
-                  {item.Kondisi_SIsir && <p>Kondisi: {item.Kondisi_SIsir}</p>}
+                  {item.nomor_sisir_destiny && <p>Destiny: {item.nomor_sisir_destiny}</p>}
+                  <p>Mekanik: {item.nama_mekanik}</p>
+                  {item.kondisi_sisir && <p>Kondisi: {item.kondisi_sisir}</p>}
                 </div>
               </div>
             </div>

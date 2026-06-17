@@ -1,49 +1,57 @@
-export interface LiveTracking {
-  Nomer_Mesin: string;
-  Jenis_Mesin: string;
-  SN_Mesin: string | number;
-  ID_sisir_terpasang: string;
-  Nomor_sisir_Destiny: string;
-  "Nomor sisir Destiny"?: string;
-  Tanggal_Pasang: string;
-  Durasi_Pakai: string;
-  Posisi_Gedung: string;
-}
+// ─── Tipe data sesuai schema Supabase (snake_case) ─────────────────────────
 
 export interface MasterStok {
-  "ID SISIR": string;
-  "Nomor sisir Destiny": string;
-  Nomor_sisir_Destiny?: string;
-  "Merk Supplier": string;
-  "Posisi Rak": string;
-  "Status Saat Ini": string;
-  "Mesin Terpasang": string;
-  "Kondisi Sisir": string;
+  id_sisir: string;
+  nomor_sisir_destiny?: string;
+  merk_supplier?: string;
+  posisi_rak?: string;
+  status_saat_ini?: string;
+  kondisi_sisir?: string;
+  mesin_terpasang?: string | null;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface LiveTracking {
+  nomer_mesin: string;
+  jenis_mesin?: string;
+  sn_mesin?: string;
+  posisi_gedung?: string;
+  id_sisir_terpasang?: string;
+  nomor_sisir_destiny?: string;
+  tanggal_pasang?: string | null;
+  durasi_pakai?: string; // hanya ada kalau baca dari view v_live_tracking
+  created_at?: string;
+  updated_at?: string;
 }
 
 export interface HistoryPasang {
-  Tanggal_Ganti: string;
-  Nomor_Mesin: string;
-  ID_Sisir: string;
-  Nomor_sisir_Destiny: string;
-  Nama_Mekanik: string;
+  id?: number;
+  tanggal_ganti: string;
+  nomor_mesin: string;
+  id_sisir: string;
+  nomor_sisir_destiny?: string;
+  nama_mekanik?: string;
+  created_at?: string;
 }
 
 export interface HistoryLepas {
-  Tanggal_Lepas: string;
-  Nomor_Mesin: string;
-  ID_Sisir: string;
-  Nomor_sisir_Destiny: string;
-  Nama_Mekanik: string;
-  Kondisi_SIsir: string;
+  id?: number;
+  tanggal_lepas: string;
+  nomor_mesin: string;
+  id_sisir: string;
+  nomor_sisir_destiny?: string;
+  nama_mekanik?: string;
+  kondisi_sisir?: string;
+  created_at?: string;
 }
 
 export interface CombinedHistory {
   type: "PASANG" | "LEPAS";
-  Nomor_Mesin: string;
-  ID_Sisir: string;
-  Nomor_sisir_Destiny: string;
-  Nama_Mekanik: string;
+  nomor_mesin: string;
+  id_sisir: string;
+  nomor_sisir_destiny?: string;
+  nama_mekanik?: string;
   tanggal: string;
-  Kondisi_SIsir?: string;
+  kondisi_sisir?: string;
 }
