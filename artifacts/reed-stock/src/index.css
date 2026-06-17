@@ -111,29 +111,40 @@
   --sidebar: 215 28% 17%;
   --sidebar-foreground: 210 40% 97%;
   --sidebar-border: 215 25% 27%;
-  --sidebar-primary: 142 71% 45%;
+  
+  /* 🧵 Denim Theme: Washed Indigo Primary */
+  --sidebar-primary: 216 45% 52%;
   --sidebar-primary-foreground: 222 47% 11%;
   --sidebar-accent: 215 25% 27%;
   --sidebar-accent-foreground: 210 40% 97%;
-  --sidebar-ring: 142 71% 45%;
+  --sidebar-ring: 216 45% 52%;
+  
   --popover: 215 28% 17%;
   --popover-foreground: 210 40% 97%;
   --popover-border: 215 25% 27%;
-  --primary: 142 71% 45%;
+  
+  /* Primary: Washed Indigo (denim blue) */
+  --primary: 216 45% 52%;
   --primary-foreground: 222 47% 11%;
+  
   --secondary: 215 25% 27%;
   --secondary-foreground: 210 40% 97%;
   --muted: 215 25% 27%;
   --muted-foreground: 215 16% 65%;
   --accent: 215 25% 27%;
   --accent-foreground: 210 40% 97%;
-  --destructive: 0 84% 60%;
+  
+  /* Soft red for destructive (softer than pure red) */
+  --destructive: 0 70% 55%;
   --destructive-foreground: 210 40% 97%;
+  
   --input: 215 20% 35%;
-  --ring: 142 71% 45%;
-  --chart-1: 142 71% 45%;
+  --ring: 216 45% 52%;
+  
+  /* Chart colors with denim theme */
+  --chart-1: 216 45% 52%;
   --chart-2: 215 25% 27%;
-  --chart-3: 0 84% 60%;
+  --chart-3: 39 76% 52%;
   --chart-4: 215 16% 65%;
   --chart-5: 210 40% 97%;
 
@@ -229,5 +240,77 @@
   .border.active-elevate-2:not(.no-active-interaction-elevate)::after,
   .border.hover-elevate:not(.no-hover-interaction-elevate)::after {
     inset: -1px;
+  }
+
+  /* 🧵 Denim Twill Texture - subtle background pattern */
+  .denim-texture {
+    background-image:
+      repeating-linear-gradient(45deg, transparent, transparent 2px, rgba(216, 180, 105, 0.03) 2px, rgba(216, 180, 105, 0.03) 4px),
+      repeating-linear-gradient(-45deg, transparent, transparent 2px, rgba(216, 180, 105, 0.02) 2px, rgba(216, 180, 105, 0.02) 4px);
+  }
+
+  /* Status Color Coding System */
+  .status-in-stock {
+    @apply bg-emerald-500/20 text-emerald-400 border-emerald-500/40;
+  }
+  .status-in-use {
+    @apply bg-primary/20 text-primary border-primary/40;
+  }
+  .status-need-repair {
+    @apply bg-amber-500/20 text-amber-400 border-amber-500/40;
+  }
+  .status-broken {
+    @apply bg-red-500/20 text-red-400 border-red-500/40;
+  }
+  .status-service {
+    @apply bg-yellow-500/20 text-yellow-400 border-yellow-500/40;
+  }
+
+  /* Highlight for status numbers - improved contrast */
+  .status-number {
+    @apply text-white font-bold tracking-tight text-lg;
+  }
+
+  /* Progress bar styling */
+  .progress-bar-denim {
+    @apply bg-gradient-to-r from-primary to-blue-400;
+  }
+
+  /* Mini donut/progress indicator */
+  .mini-donut {
+    @apply relative w-12 h-12 rounded-full flex items-center justify-center;
+    background: conic-gradient(
+      hsl(var(--primary)) 0deg,
+      hsl(var(--primary)) var(--progress, 0deg),
+      hsl(var(--border)) var(--progress, 0deg),
+      hsl(var(--border)) 360deg
+    );
+  }
+  .mini-donut::after {
+    content: '';
+    position: absolute;
+    inset: 2px;
+    border-radius: 9999px;
+    @apply bg-card;
+  }
+  .mini-donut .value {
+    position: relative;
+    z-index: 1;
+    @apply text-xs font-bold text-primary;
+  }
+
+  /* Filter button styling */
+  .filter-btn {
+    @apply inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-primary/50 bg-primary/10 text-primary hover:bg-primary/20 transition-colors;
+  }
+
+  /* Detail button - interactive */
+  .detail-btn {
+    @apply inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-primary/20 text-primary border border-primary/40 hover:bg-primary/30 hover:border-primary/60 transition-all duration-200 cursor-pointer;
+  }
+
+  /* Textile icon styling */
+  .textile-icon {
+    @apply inline-block text-primary";
   }
 }
