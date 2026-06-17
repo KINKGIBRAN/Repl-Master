@@ -1,5 +1,4 @@
 // ─── Tipe data sesuai schema Supabase (snake_case) ─────────────────────────
-
 export interface MasterStok {
   id_sisir: string;
   nomor_sisir_destiny?: string;
@@ -32,6 +31,7 @@ export interface HistoryPasang {
   id_sisir: string;
   nomor_sisir_destiny?: string;
   nama_mekanik?: string;
+  created_by?: string;   // ← nama user yang menginput
   created_at?: string;
 }
 
@@ -43,6 +43,7 @@ export interface HistoryLepas {
   nomor_sisir_destiny?: string;
   nama_mekanik?: string;
   kondisi_sisir?: string;
+  created_by?: string;   // ← nama user yang menginput
   created_at?: string;
 }
 
@@ -54,4 +55,5 @@ export interface CombinedHistory {
   nama_mekanik?: string;
   tanggal: string;
   kondisi_sisir?: string;
+  created_by?: string;   // ← nama user yang menginput
 }

@@ -2,6 +2,19 @@ import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { CombinedHistory } from "./types";
 
+// ─── Helper: Format tanggal ISO → "17 Jun 2026" ──────────────────────────────
+const formatTanggal = (str: string): string => {
+  if (!str || str === "-") return "-";
+  try {
+    const d = new Date(str);
+    if (isNaN(d.getTime())) return str;
+    return d.toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric" });
+  } catch {
+    return str;
+  }
+};
+
+// ─── Header ──────────────────────────────────────────────────────────────────
 const addHeader = (doc: jsPDF, leftLine1: string, leftLine2: string) => {
   doc.setFontSize(15);
   doc.setFont("helvetica", "bold");
@@ -16,20 +29,25 @@ const addHeader = (doc: jsPDF, leftLine1: string, leftLine2: string) => {
   doc.setFontSize(9);
   doc.text(leftLine1, 14, 37);
   doc.text(leftLine2, 14, 43);
-  const today = new Date().toLocaleDateString("id-ID", { day: "2-digit", month: "long", year: "numeric" });
+  const today = new Date().toLocaleDateString("id-ID", {
+    day: "2-digit",
+    month: "long",
+    year: "numeric",
+  });
   doc.text(`Tanggal Cetak: ${today}`, 196, 37, { align: "right" });
 };
 
+// ─── Footer + Tanda Tangan ────────────────────────────────────────────────────
 const addSignatureFooter = (doc: jsPDF, operator: string = "___________________") => {
   const pages = doc.getNumberOfPages();
   for (let i = 1; i <= pages; i++) {
     doc.setPage(i);
 
-    // Page numbers
+    // Nomor halaman
     doc.setFontSize(8);
     doc.text(`Halaman ${i} dari ${pages}`, 196, 290, { align: "right" });
 
-    // Signatures only on last page
+    // Tanda tangan hanya di halaman terakhir
     if (i === pages) {
       const finalY = (doc as any).lastAutoTable?.finalY ?? 200;
       const sigY = Math.min(finalY + 20, 255);
@@ -44,10 +62,12 @@ const addSignatureFooter = (doc: jsPDF, operator: string = "___________________"
   }
 };
 
+// ─── PDF Laporan Mesin ────────────────────────────────────────────────────────
 export const generateMachineHistoryPDF = (
   machineId: string,
   machineType: string,
-  history: CombinedHistory[]
+  history: CombinedHistory[],
+  operator: string = "___________________"
 ) => {
   const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
 
@@ -57,27 +77,37 @@ export const generateMachineHistoryPDF = (
     startY: 50,
     head: [["Tanggal", "Aktivitas", "ID Sisir", "Nomor Destiny", "Mekanik", "Kondisi"]],
     body: history.map((h) => [
-      h.tanggal,
+      formatTanggal(h.tanggal),
       h.type,
-      h.ID_Sisir,
-      h.Nomor_sisir_Destiny || "-",
-      h.Nama_Mekanik,
-      h.Kondisi_SIsir || "-",
+      h.id_sisir || "-",
+      h.nomor_sisir_destiny || "-",
+      h.nama_mekanik || "-",
+      h.kondisi_sisir || "-",
     ]),
     theme: "striped",
-    headStyles: { fillColor: [15, 23, 42], textColor: 255, fontSize: 9, fontStyle: "bold" },
+    headStyles: {
+      fillColor: [15, 23, 42],
+      textColor: 255,
+      fontSize: 9,
+      fontStyle: "bold",
+    },
     styles: { fontSize: 8, overflow: "linebreak" },
-    columnStyles: { 0: { cellWidth: 22 }, 1: { cellWidth: 18 } },
+    columnStyles: {
+      0: { cellWidth: 26 },
+      1: { cellWidth: 18 },
+    },
   });
 
-  addSignatureFooter(doc);
+  addSignatureFooter(doc, operator);
   doc.save(`Laporan_Mesin_${machineId}.pdf`);
 };
 
+// ─── PDF Laporan Sisir ────────────────────────────────────────────────────────
 export const generateReedHistoryPDF = (
   reedId: string,
   destiny: string,
-  history: CombinedHistory[]
+  history: CombinedHistory[],
+  operator: string = "___________________"
 ) => {
   const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
 
@@ -87,19 +117,27 @@ export const generateReedHistoryPDF = (
     startY: 50,
     head: [["Tanggal", "Aktivitas", "Nomor Mesin", "Nomor Destiny", "Mekanik", "Kondisi"]],
     body: history.map((h) => [
-      h.tanggal,
+      formatTanggal(h.tanggal),
       h.type,
-      h.Nomor_Mesin,
-      h.Nomor_sisir_Destiny || "-",
-      h.Nama_Mekanik,
-      h.Kondisi_SIsir || "-",
+      h.nomor_mesin || "-",
+      h.nomor_sisir_destiny || "-",
+      h.nama_mekanik || "-",
+      h.kondisi_sisir || "-",
     ]),
     theme: "striped",
-    headStyles: { fillColor: [15, 23, 42], textColor: 255, fontSize: 9, fontStyle: "bold" },
+    headStyles: {
+      fillColor: [15, 23, 42],
+      textColor: 255,
+      fontSize: 9,
+      fontStyle: "bold",
+    },
     styles: { fontSize: 8, overflow: "linebreak" },
-    columnStyles: { 0: { cellWidth: 22 }, 1: { cellWidth: 18 } },
+    columnStyles: {
+      0: { cellWidth: 26 },
+      1: { cellWidth: 18 },
+    },
   });
 
-  addSignatureFooter(doc);
+  addSignatureFooter(doc, operator);
   doc.save(`Laporan_Sisir_${reedId}.pdf`);
 };

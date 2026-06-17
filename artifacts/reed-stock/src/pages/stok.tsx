@@ -24,7 +24,6 @@ const formatDate = (str: string): string => {
   }
 };
 
-// Pakai nama kolom snake_case sesuai schema Supabase
 const getEffectiveStatus = (item: MasterStok): string => {
   const status = (item.status_saat_ini || "").trim().toUpperCase();
   const kondisi = (item.kondisi_sisir || "").trim().toUpperCase();
@@ -38,16 +37,18 @@ const getEffectiveStatus = (item: MasterStok): string => {
 type FilterKey = "Semua" | "Gudang" | "Dipakai" | "Rusak" | "Service";
 
 export default function StokPage() {
-  const { isAdmin } = useAuth();
+  const { isAdmin, currentUser } = useAuth();
   const [stok, setStok] = useState<MasterStok[]>([]);
   const [historyData, setHistoryData] = useState<CombinedHistory[]>([]);
   const [loading, setLoading] = useState(true);
+  const [actionLoading, setActionLoading] = useState(false); // ← loading khusus untuk aksi tombol
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<FilterKey>("Semua");
   const [searchQuery, setSearchQuery] = useState("");
 
   const [selectedReed, setSelectedReed] = useState<MasterStok | null>(null);
   const [isDetailOpen, setIsDetailOpen] = useState(false);
+  const [isAddOpen, setIsAddOpen] = useState(false);
 
   const [newReed, setNewReed] = useState({
     id_sisir: "",
@@ -95,6 +96,7 @@ export default function StokPage() {
       combined.sort((a, b) => new Date(b.tanggal).getTime() - new Date(a.tanggal).getTime());
       setHistoryData(combined);
 
+      // Sinkronkan selectedReed jika sedang terbuka
       const current = selectedReedRef.current;
       if (current) {
         const updated = stokData.find((s) => s.id_sisir === current.id_sisir);
@@ -109,36 +111,55 @@ export default function StokPage() {
 
   useEffect(() => { loadData(); }, [loadData]);
 
+  // ─── Tambah Sisir Baru ────────────────────────────────────────────────────
   const handleAddReed = async () => {
-    if (!newReed.id_sisir) {
+    const idTrim = newReed.id_sisir.trim();
+    if (!idTrim) {
       toast.error("ID Sisir harus diisi");
       return;
     }
+    const isDuplicate = stok.some(
+      (s) => s.id_sisir.trim().toUpperCase() === idTrim.toUpperCase()
+    );
+    if (isDuplicate) {
+      toast.error(`ID Sisir "${idTrim}" sudah terdaftar. Gunakan ID lain.`);
+      return;
+    }
+    setActionLoading(true);
     try {
       await addRowToSheet("MASTER_STOK", {
         ...newReed,
+        id_sisir: idTrim,
         status_saat_ini: "GUDANG",
         kondisi_sisir: "BAGUS",
       });
       toast.success("Sisir berhasil ditambahkan");
       setNewReed({ id_sisir: "", nomor_sisir_destiny: "", merk_supplier: "", posisi_rak: "" });
-      loadData();
+      setIsAddOpen(false);
+      await loadData();
     } catch (err: any) {
-      toast.error(err.message);
+      toast.error(err.message || "Gagal menambah sisir");
+    } finally {
+      setActionLoading(false);
     }
   };
 
+  // ─── Kirim Service ────────────────────────────────────────────────────────
+  // FIX: Sekarang update MASTER_STOK + insert HISTORY_LEPAS secara bersamaan
   const handleKirimService = async () => {
     if (!selectedReed) return;
     const id = selectedReed.id_sisir;
     const tanggal = new Date().toISOString();
 
+    setActionLoading(true);
     try {
-      setSelectedReed((prev) => prev ? { ...prev, status_saat_ini: "SERVICE" } : prev);
-      setStok((prev) =>
-        prev.map((s) => (s.id_sisir === id ? { ...s, status_saat_ini: "SERVICE" } : s))
-      );
+      // 1. Update status di MASTER_STOK dulu (ini yang sebelumnya hilang!)
+      await updateRowInSheet("MASTER_STOK", "id_sisir", id, {
+        status_saat_ini: "SERVICE",
+        kondisi_sisir: "RUSAK",
+      });
 
+      // 2. Catat ke HISTORY_LEPAS
       await addRowToSheet("HISTORY_LEPAS", {
         tanggal_lepas: tanggal,
         nomor_mesin: "Kirim Supplier",
@@ -146,30 +167,37 @@ export default function StokPage() {
         nomor_sisir_destiny: selectedReed.nomor_sisir_destiny || "",
         nama_mekanik: "-",
         kondisi_sisir: "RUSAK",
+        created_by: currentUser?.nama || "-",
       });
 
-      toast.success("Sisir berhasil dicatat ke History Lepas untuk Service");
+      toast.success("Sisir berhasil dikirim ke service");
       setIsDetailOpen(false);
-      loadData();
+      await loadData();
     } catch (err: any) {
-      setSelectedReed(selectedReed);
-      setStok((prev) => prev.map((s) => (s.id_sisir === id ? selectedReed : s)));
       toast.error(err.message || "Gagal mengirim data service");
+    } finally {
+      setActionLoading(false);
     }
   };
 
+  // ─── Terima Service / Selesai Perbaiki ───────────────────────────────────
+  // FIX: Sekarang update MASTER_STOK + insert HISTORY_LEPAS secara bersamaan
   const handleTerimaService = async () => {
     if (!selectedReed) return;
     const idSisir = selectedReed.id_sisir;
     const nomorDestiny = selectedReed.nomor_sisir_destiny || "";
     const tanggalSekarang = new Date().toISOString();
 
+    setActionLoading(true);
     try {
-      setSelectedReed((prev) => prev ? { ...prev, status_saat_ini: "GUDANG" } : prev);
-      setStok((prev) =>
-        prev.map((s) => (s.id_sisir === idSisir ? { ...s, status_saat_ini: "GUDANG" } : s))
-      );
+      // 1. Update status di MASTER_STOK dulu
+      await updateRowInSheet("MASTER_STOK", "id_sisir", idSisir, {
+        status_saat_ini: "GUDANG",
+        kondisi_sisir: "BAGUS",
+        mesin_terpasang: null, // kosongkan mesin jika ada
+      });
 
+      // 2. Catat ke HISTORY_LEPAS
       await addRowToSheet("HISTORY_LEPAS", {
         tanggal_lepas: tanggalSekarang,
         nomor_mesin: "DARI SUPPLIER",
@@ -177,18 +205,20 @@ export default function StokPage() {
         nomor_sisir_destiny: nomorDestiny,
         nama_mekanik: "-",
         kondisi_sisir: "BAIK",
+        created_by: currentUser?.nama || "-",
       });
 
-      toast.success("Data berhasil masuk ke History Lepas");
+      toast.success("Sisir berhasil diterima dari service");
       setIsDetailOpen(false);
-      loadData();
+      await loadData();
     } catch (err: any) {
-      setSelectedReed(selectedReed);
-      setStok((prev) => prev.map((s) => (s.id_sisir === idSisir ? selectedReed : s)));
-      toast.error(err.message);
+      toast.error(err.message || "Gagal menerima data service");
+    } finally {
+      setActionLoading(false);
     }
   };
 
+  // ─── Potong Sisir ─────────────────────────────────────────────────────────
   const handlePotong = async () => {
     if (!selectedReed || !cutData.dimensi) {
       toast.error("Isi dimensi baru");
@@ -198,24 +228,21 @@ export default function StokPage() {
       nomor_sisir_destiny: cutData.dimensi,
       kondisi_sisir: `Dipotong ${new Date().toLocaleDateString("id-ID")}${cutData.mekanik ? " oleh " + cutData.mekanik : ""}`,
     };
+    setActionLoading(true);
     try {
-      setSelectedReed((prev) => prev ? { ...prev, ...updates } : prev);
-      setStok((prev) =>
-        prev.map((s) => (s.id_sisir === selectedReed.id_sisir ? { ...s, ...updates } : s))
-      );
-
       await updateRowInSheet("MASTER_STOK", "id_sisir", selectedReed.id_sisir, updates);
       toast.success("Spesifikasi berhasil diupdate");
       setCutData({ dimensi: "", mekanik: "" });
       setIsDetailOpen(false);
-      loadData();
+      await loadData();
     } catch (err: any) {
-      setSelectedReed(selectedReed);
-      setStok((prev) => prev.map((s) => (s.id_sisir === selectedReed.id_sisir ? selectedReed : s)));
-      toast.error(err.message);
+      toast.error(err.message || "Gagal update data potong");
+    } finally {
+      setActionLoading(false);
     }
   };
 
+  // ─── Counts & Filter ──────────────────────────────────────────────────────
   const counts: Record<FilterKey, number> = {
     Semua: stok.length,
     Gudang: stok.filter((s) => getEffectiveStatus(s) === "Gudang").length,
@@ -261,6 +288,7 @@ export default function StokPage() {
   const isRusak = selectedStatus === "Rusak";
   const isService = selectedStatus === "Service";
 
+  // ─── Render ───────────────────────────────────────────────────────────────
   if (loading) {
     return (
       <div className="flex h-[calc(100vh-5rem)] items-center justify-center">
@@ -283,10 +311,11 @@ export default function StokPage() {
 
   return (
     <div className="p-4 space-y-4 pb-24">
+      {/* Header */}
       <div className="flex justify-between items-center">
         <h1 className="text-2xl font-bold tracking-tight">Master Stok Sisir</h1>
         {isAdmin && (
-          <Dialog>
+          <Dialog open={isAddOpen} onOpenChange={setIsAddOpen}>
             <DialogTrigger asChild>
               <Button size="sm"><Plus className="mr-2 h-4 w-4" />Tambah</Button>
             </DialogTrigger>
@@ -295,29 +324,48 @@ export default function StokPage() {
               <div className="space-y-4 py-4">
                 <div className="space-y-2">
                   <Label>ID Sisir</Label>
-                  <Input value={newReed.id_sisir} onChange={(e) => setNewReed({ ...newReed, id_sisir: e.target.value })} placeholder="Contoh: SKR-100" />
+                  <Input
+                    value={newReed.id_sisir}
+                    onChange={(e) => setNewReed({ ...newReed, id_sisir: e.target.value })}
+                    placeholder="Contoh: SKR-100"
+                  />
                 </div>
                 <div className="space-y-2">
                   <Label>Nomor Sisir Destiny</Label>
-                  <Input value={newReed.nomor_sisir_destiny} onChange={(e) => setNewReed({ ...newReed, nomor_sisir_destiny: e.target.value })} placeholder="Contoh: 32X78X100" />
+                  <Input
+                    value={newReed.nomor_sisir_destiny}
+                    onChange={(e) => setNewReed({ ...newReed, nomor_sisir_destiny: e.target.value })}
+                    placeholder="Contoh: 32X78X100"
+                  />
                 </div>
                 <div className="space-y-2">
                   <Label>Merk Supplier</Label>
-                  <Input value={newReed.merk_supplier} onChange={(e) => setNewReed({ ...newReed, merk_supplier: e.target.value })} placeholder="Contoh: SETIA KIJI REED" />
+                  <Input
+                    value={newReed.merk_supplier}
+                    onChange={(e) => setNewReed({ ...newReed, merk_supplier: e.target.value })}
+                    placeholder="Contoh: SETIA KIJI REED"
+                  />
                 </div>
                 <div className="space-y-2">
                   <Label>Posisi Rak</Label>
-                  <Input value={newReed.posisi_rak} onChange={(e) => setNewReed({ ...newReed, posisi_rak: e.target.value })} placeholder="Contoh: RAK A1" />
+                  <Input
+                    value={newReed.posisi_rak}
+                    onChange={(e) => setNewReed({ ...newReed, posisi_rak: e.target.value })}
+                    placeholder="Contoh: RAK A1"
+                  />
                 </div>
               </div>
               <DialogFooter>
-                <Button onClick={handleAddReed}>Simpan</Button>
+                <Button onClick={handleAddReed} disabled={actionLoading}>
+                  {actionLoading ? "Menyimpan..." : "Simpan"}
+                </Button>
               </DialogFooter>
             </DialogContent>
           </Dialog>
         )}
       </div>
 
+      {/* Search */}
       <div className="relative">
         <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground/70" />
         <Input
@@ -328,10 +376,16 @@ export default function StokPage() {
           className="pl-9 pr-9 h-10 rounded-xl"
         />
         {searchQuery && (
-          <button onClick={() => setSearchQuery("")} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground text-xs">✕</button>
+          <button
+            onClick={() => setSearchQuery("")}
+            className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground text-xs"
+          >
+            ✕
+          </button>
         )}
       </div>
 
+      {/* Filter Tabs */}
       <Tabs value={filter} onValueChange={(v) => setFilter(v as FilterKey)}>
         <TabsList className="w-full grid grid-cols-5 h-auto">
           {(["Semua", "Gudang", "Dipakai", "Rusak", "Service"] as FilterKey[]).map((tab) => (
@@ -343,6 +397,7 @@ export default function StokPage() {
         </TabsList>
       </Tabs>
 
+      {/* List */}
       {filteredStok.length === 0 ? (
         <div className="text-center py-12 text-muted-foreground bg-card rounded-lg border border-border">
           {searchQuery ? "Tidak ditemukan." : "Tidak ada data untuk filter ini."}
@@ -363,8 +418,12 @@ export default function StokPage() {
                     {locked && <Lock className="h-3.5 w-3.5 text-muted-foreground shrink-0" />}
                     {item.id_sisir}
                   </div>
-                  <div className="text-sm text-muted-foreground truncate">{item.nomor_sisir_destiny} · {item.merk_supplier}</div>
-                  {item.posisi_rak && <div className="text-xs text-muted-foreground/60">{item.posisi_rak}</div>}
+                  <div className="text-sm text-muted-foreground truncate">
+                    {item.nomor_sisir_destiny} · {item.merk_supplier}
+                  </div>
+                  {item.posisi_rak && (
+                    <div className="text-xs text-muted-foreground/60">{item.posisi_rak}</div>
+                  )}
                 </div>
                 {statusBadge(item)}
               </div>
@@ -373,7 +432,10 @@ export default function StokPage() {
         </div>
       )}
 
-      <Dialog open={isDetailOpen} onOpenChange={setIsDetailOpen}>
+      {/* Detail Dialog */}
+      <Dialog open={isDetailOpen} onOpenChange={(open) => {
+        if (!actionLoading) setIsDetailOpen(open); // cegah dialog tertutup saat loading
+      }}>
         <DialogContent className="max-h-[90vh] overflow-y-auto">
           {selectedReed && (
             <>
@@ -384,109 +446,180 @@ export default function StokPage() {
                 </div>
               </DialogHeader>
 
+              {/* Info Grid */}
               <div className="grid grid-cols-2 gap-3 bg-muted/30 p-3 rounded-lg text-sm">
-                <div><p className="text-xs text-muted-foreground">Nomor Destiny</p><p className="font-medium">{selectedReed.nomor_sisir_destiny || "-"}</p></div>
-                <div><p className="text-xs text-muted-foreground">Merk Supplier</p><p className="font-medium">{selectedReed.merk_supplier || "-"}</p></div>
-                <div><p className="text-xs text-muted-foreground">Mesin Terpasang</p><p className="font-medium">{selectedReed.mesin_terpasang || "-"}</p></div>
-                <div><p className="text-xs text-muted-foreground">Posisi Rak</p><p className="font-medium">{selectedReed.posisi_rak || "-"}</p></div>
-                <div className="col-span-2"><p className="text-xs text-muted-foreground">Kondisi</p><p className="font-medium">{selectedReed.kondisi_sisir || "-"}</p></div>
+                <div>
+                  <p className="text-xs text-muted-foreground">Nomor Destiny</p>
+                  <p className="font-medium">{selectedReed.nomor_sisir_destiny || "-"}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">Merk Supplier</p>
+                  <p className="font-medium">{selectedReed.merk_supplier || "-"}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">Mesin Terpasang</p>
+                  <p className="font-medium">{selectedReed.mesin_terpasang || "-"}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">Posisi Rak</p>
+                  <p className="font-medium">{selectedReed.posisi_rak || "-"}</p>
+                </div>
+                <div className="col-span-2">
+                  <p className="text-xs text-muted-foreground">Kondisi</p>
+                  <p className="font-medium">{selectedReed.kondisi_sisir || "-"}</p>
+                </div>
               </div>
 
+              {/* Warning: Dipakai / Terpasang */}
               {isLocked && (
                 <div className="flex items-center gap-2 rounded-lg bg-muted/40 border border-border px-3 py-2 text-xs text-muted-foreground">
                   <Lock className="h-3.5 w-3.5 text-yellow-500 shrink-0" />
-                  Sisir sedang terpasang di mesin <strong>{selectedReed.mesin_terpasang}</strong>. Lepas dari mesin terlebih dahulu sebelum mengubah status.
+                  Sisir sedang terpasang di mesin <strong>{selectedReed.mesin_terpasang}</strong>.
+                  Lepas dari mesin terlebih dahulu sebelum mengubah status.
                 </div>
               )}
 
+              {/* Warning: Rusak */}
+              {isRusak && (
+                <div className="flex items-center gap-2 rounded-lg bg-destructive/10 border border-destructive/30 px-3 py-2 text-xs text-destructive">
+                  <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+                  Sisir berstatus <strong>RUSAK</strong> tidak dapat dipasang ke mesin manapun.
+                  Klik "Selesai Perbaiki" setelah sisir diperbaiki agar bisa dipakai kembali.
+                </div>
+              )}
+
+              {/* Aksi (Admin only, tidak locked) */}
               {isAdmin && !isLocked && (
                 <div className="space-y-2">
                   <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Aksi</p>
                   <div className="flex gap-2 flex-wrap">
 
-                    {!isService && (
+                    {/* Kirim Service — hanya jika bukan service dan bukan rusak */}
+                    {!isService && !isRusak && (
                       <Button
                         variant="outline"
                         className="flex-1 border-yellow-500/50 text-yellow-500 hover:bg-yellow-500/10"
                         onClick={handleKirimService}
+                        disabled={actionLoading}
                       >
-                        <Settings className="w-4 h-4 mr-2" /> Kirim Service
+                        <Settings className="w-4 h-4 mr-2" />
+                        {actionLoading ? "Memproses..." : "Kirim Service"}
                       </Button>
                     )}
 
+                    {/* Terima Service — hanya jika status service */}
                     {isService && (
                       <Button
                         className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white"
                         onClick={handleTerimaService}
+                        disabled={actionLoading}
                       >
-                        <PackageCheck className="w-4 h-4 mr-2" /> Terima Service
+                        <PackageCheck className="w-4 h-4 mr-2" />
+                        {actionLoading ? "Memproses..." : "Terima Service"}
                       </Button>
                     )}
 
+                    {/* Potong — hanya jika bukan rusak dan bukan service */}
                     {!isRusak && !isService && (
                       <Dialog>
                         <DialogTrigger asChild>
-                          <Button variant="outline" className="flex-1">
+                          <Button variant="outline" className="flex-1" disabled={actionLoading}>
                             <Scissors className="w-4 h-4 mr-2" /> Potong
                           </Button>
                         </DialogTrigger>
                         <DialogContent>
-                          <DialogHeader><DialogTitle>Potong Sisir {selectedReed.id_sisir}</DialogTitle></DialogHeader>
+                          <DialogHeader>
+                            <DialogTitle>Potong Sisir {selectedReed.id_sisir}</DialogTitle>
+                          </DialogHeader>
                           <div className="space-y-4 py-4">
                             <div className="space-y-2">
                               <Label>Dimensi Baru (Destiny)</Label>
-                              <Input value={cutData.dimensi} onChange={(e) => setCutData({ ...cutData, dimensi: e.target.value })} placeholder="Contoh: 32X78X115" />
+                              <Input
+                                value={cutData.dimensi}
+                                onChange={(e) => setCutData({ ...cutData, dimensi: e.target.value })}
+                                placeholder="Contoh: 32X78X115"
+                              />
                             </div>
                             <div className="space-y-2">
                               <Label>Nama Mekanik</Label>
-                              <Input value={cutData.mekanik} onChange={(e) => setCutData({ ...cutData, mekanik: e.target.value })} placeholder="Nama Mekanik" />
+                              <Input
+                                value={cutData.mekanik}
+                                onChange={(e) => setCutData({ ...cutData, mekanik: e.target.value })}
+                                placeholder="Nama Mekanik"
+                              />
                             </div>
                           </div>
                           <DialogFooter>
-                            <Button onClick={handlePotong}>Simpan</Button>
+                            <Button onClick={handlePotong} disabled={actionLoading}>
+                              {actionLoading ? "Menyimpan..." : "Simpan"}
+                            </Button>
                           </DialogFooter>
                         </DialogContent>
                       </Dialog>
                     )}
 
+                    {/* Selesai Perbaiki — hanya jika status rusak */}
                     {isRusak && (
                       <Button
                         variant="outline"
                         className="flex-1 border-emerald-500/50 text-emerald-500 hover:bg-emerald-500/10"
                         onClick={handleTerimaService}
+                        disabled={actionLoading}
                       >
-                        <Wrench className="w-4 h-4 mr-2" /> Selesai Perbaiki
+                        <Wrench className="w-4 h-4 mr-2" />
+                        {actionLoading ? "Memproses..." : "Selesai Perbaiki"}
                       </Button>
                     )}
                   </div>
 
-                  <Button variant="secondary" className="w-full" onClick={() => generateReedHistoryPDF(selectedReed.id_sisir, selectedReed.nomor_sisir_destiny, reedHistory)}>
+                  <Button
+                    variant="secondary"
+                    className="w-full"
+                    onClick={() => generateReedHistoryPDF(selectedReed.id_sisir, selectedReed.nomor_sisir_destiny, reedHistory)}
+                  >
                     <FileText className="w-4 h-4 mr-2" /> Cetak PDF Riwayat
                   </Button>
                 </div>
               )}
 
+              {/* Cetak PDF untuk non-admin */}
               {!isAdmin && (
-                <Button variant="secondary" className="w-full" onClick={() => generateReedHistoryPDF(selectedReed.id_sisir, selectedReed.nomor_sisir_destiny, reedHistory)}>
+                <Button
+                  variant="secondary"
+                  className="w-full"
+                  onClick={() => generateReedHistoryPDF(selectedReed.id_sisir, selectedReed.nomor_sisir_destiny, reedHistory)}
+                >
                   <FileText className="w-4 h-4 mr-2" /> Cetak PDF Riwayat
                 </Button>
               )}
 
+              {/* Riwayat */}
               <div>
-                <h3 className="font-semibold mb-3 text-sm">Riwayat Pemakaian ({reedHistory.length} catatan)</h3>
+                <h3 className="font-semibold mb-3 text-sm">
+                  Riwayat Pemakaian ({reedHistory.length} catatan)
+                </h3>
                 {reedHistory.length === 0 ? (
                   <p className="text-sm text-muted-foreground text-center py-4">Belum ada riwayat</p>
                 ) : (
                   <div className="space-y-2">
                     {reedHistory.map((h, i) => (
-                      <div key={i} className="text-sm border-l-2 border-border pl-3 py-1"
-                        style={{ borderColor: h.type === "PASANG" ? "hsl(var(--primary))" : "hsl(var(--destructive))" }}>
+                      <div
+                        key={i}
+                        className="text-sm border-l-2 border-border pl-3 py-1"
+                        style={{
+                          borderColor:
+                            h.type === "PASANG"
+                              ? "hsl(var(--primary))"
+                              : "hsl(var(--destructive))",
+                        }}
+                      >
                         <div className="flex justify-between font-medium">
                           <span>{h.type} di Mesin {h.nomor_mesin}</span>
                           <span className="text-muted-foreground text-xs">{formatDate(h.tanggal)}</span>
                         </div>
                         <div className="text-muted-foreground text-xs mt-0.5">
-                          Mekanik: {h.nama_mekanik}{h.kondisi_sisir ? ` · ${h.kondisi_sisir}` : ""}
+                          Mekanik: {h.nama_mekanik}
+                          {h.kondisi_sisir ? ` · ${h.kondisi_sisir}` : ""}
                         </div>
                       </div>
                     ))}

@@ -10,6 +10,26 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 type FilterKey = "Semua" | "PASANG" | "LEPAS";
 
+// Format tanggal + jam Indonesia
+const formatDateTime = (str: string): string => {
+  if (!str || str === "-") return "-";
+  try {
+    const d = new Date(str);
+    if (isNaN(d.getTime())) return str;
+    return d.toLocaleString("id-ID", {
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+      timeZone: "Asia/Jakarta",
+    }).replace("pukul", "·");
+  } catch {
+    return str;
+  }
+};
+
 export default function HistoryPage() {
   const [historyData, setHistoryData] = useState<CombinedHistory[]>([]);
   const [loading, setLoading] = useState(true);
@@ -33,6 +53,7 @@ export default function HistoryPage() {
           nomor_sisir_destiny: h.nomor_sisir_destiny,
           nama_mekanik: h.nama_mekanik,
           tanggal: h.tanggal_ganti,
+          created_by: h.created_by,
         })),
         ...hlData.map((h) => ({
           type: "LEPAS" as const,
@@ -42,6 +63,7 @@ export default function HistoryPage() {
           nama_mekanik: h.nama_mekanik,
           tanggal: h.tanggal_lepas,
           kondisi_sisir: h.kondisi_sisir,
+          created_by: h.created_by,
         })),
       ];
       combined.sort((a, b) => new Date(b.tanggal).getTime() - new Date(a.tanggal).getTime());
@@ -56,13 +78,10 @@ export default function HistoryPage() {
 
   useEffect(() => { loadData(); }, [loadData]);
 
-  // ─── Filter + Search ──────────────────────────────────────────────────────
   const filteredHistory = (() => {
     let list = historyData;
-
     if (filter === "PASANG") list = list.filter((h) => h.type === "PASANG");
     if (filter === "LEPAS")  list = list.filter((h) => h.type === "LEPAS");
-
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
       list = list.filter(
@@ -72,7 +91,6 @@ export default function HistoryPage() {
           h.nomor_sisir_destiny?.toLowerCase().includes(q)
       );
     }
-
     return list;
   })();
 
@@ -162,13 +180,15 @@ export default function HistoryPage() {
             <div
               key={i}
               className="bg-card border border-border rounded-xl p-4 flex items-start gap-3"
-              data-testid={`row-history-${i}`}
             >
               <div className="mt-0.5 shrink-0">{getIcon(item)}</div>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center justify-between gap-2 mb-1">
                   {getBadge(item)}
-                  <span className="text-xs text-muted-foreground shrink-0">{item.tanggal}</span>
+                  {/* Tanggal format Indonesia */}
+                  <span className="text-xs text-muted-foreground shrink-0">
+                    {formatDateTime(item.tanggal)}
+                  </span>
                 </div>
                 <p className="text-sm font-medium">
                   Sisir <span className="font-mono text-primary">{item.id_sisir}</span>
@@ -179,6 +199,10 @@ export default function HistoryPage() {
                   {item.nomor_sisir_destiny && <p>Destiny: {item.nomor_sisir_destiny}</p>}
                   <p>Mekanik: {item.nama_mekanik}</p>
                   {item.kondisi_sisir && <p>Kondisi: {item.kondisi_sisir}</p>}
+                  {/* Siapa yang input */}
+                  {item.created_by && (
+                    <p className="text-primary/70 font-medium">Diinput oleh: {item.created_by}</p>
+                  )}
                 </div>
               </div>
             </div>

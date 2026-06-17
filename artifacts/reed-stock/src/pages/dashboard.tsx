@@ -7,7 +7,6 @@ import { AlertCircle, Server, CheckCircle2, XCircle, PackageX, Calendar, Clock, 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
-// Disamakan dengan getEffectiveStatus di stok.tsx — pakai snake_case
 const getEffectiveStatus = (item: MasterStok): string => {
   const status = (item.status_saat_ini || "").trim().toUpperCase();
   const kondisi = (item.kondisi_sisir || "").trim().toUpperCase();
@@ -28,6 +27,12 @@ const formatDate = (str: string): string => {
     return str;
   }
 };
+
+// ✅ Cek apakah mesin sedang aktif (ada sisir terpasang)
+const isActiveMachine = (m: LiveTracking) =>
+  !!m.id_sisir_terpasang &&
+  m.id_sisir_terpasang.trim() !== "" &&
+  m.id_sisir_terpasang.trim() !== "-";
 
 interface Metrics {
   mesinAktif: number;
@@ -60,18 +65,22 @@ export default function DashboardPage() {
       );
 
       const totalMesin = liveTracking.length;
-      const mesinAktif = liveTracking.filter(
-        (m) => m.id_sisir_terpasang &&
-               m.id_sisir_terpasang.trim() !== "" &&
-               m.id_sisir_terpasang.trim() !== "-"
-      ).length;
+      const mesinAktif = liveTracking.filter(isActiveMachine).length;
       const mesinKosong = totalMesin - mesinAktif;
 
       const stokGudang = masterStok.filter((s) => getEffectiveStatus(s) === "Gudang").length;
       const sisirRusak = masterStok.filter((s) => getEffectiveStatus(s) === "Rusak").length;
 
       setMetrics({ mesinAktif, mesinKosong, stokGudang, sisirRusak });
-      setMachines(liveTracking);
+
+      // ✅ Urutkan: mesin AKTIF tampil duluan, baru yang Non Aktif
+      const sorted = [...liveTracking].sort((a, b) => {
+        const aActive = isActiveMachine(a) ? 0 : 1;
+        const bActive = isActiveMachine(b) ? 0 : 1;
+        if (aActive !== bActive) return aActive - bActive;
+        return a.nomer_mesin.localeCompare(b.nomer_mesin);
+      });
+      setMachines(sorted);
     } catch (err: any) {
       setError(err.message || "Gagal memuat data dashboard");
     } finally {
@@ -200,9 +209,7 @@ export default function DashboardPage() {
         ) : (
           <div className="grid gap-2 grid-cols-2 xs:grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6">
             {filteredMachines.map((machine) => {
-              const hasReed = machine.id_sisir_terpasang &&
-                              machine.id_sisir_terpasang.trim() !== "" &&
-                              machine.id_sisir_terpasang.trim() !== "-";
+              const hasReed = isActiveMachine(machine);
               const nomorSisirDisplay = machine.nomor_sisir_destiny || machine.id_sisir_terpasang;
 
               return (
@@ -228,10 +235,10 @@ export default function DashboardPage() {
                     <p className={`font-mono text-[10px] font-semibold tracking-tight truncate w-full ${hasReed ? "text-primary" : "text-muted-foreground/60 italic"}`}>
                       {hasReed ? nomorSisirDisplay : "Kosong"}
                     </p>
-                    {hasReed && machine.tanggal_pasang && (
+                    {hasReed && machine.durasi_pakai && (
                       <p className="text-[9px] text-amber-500 flex items-center gap-0.5 mt-0.5">
                         <Clock className="w-2.5 h-2.5" />
-                        {formatDate(machine.tanggal_pasang)}
+                        {machine.durasi_pakai}
                       </p>
                     )}
                     {hasReed && machine.posisi_gedung && (
@@ -268,7 +275,7 @@ export default function DashboardPage() {
               {loadingHistory ? (
                 <div className="flex flex-col py-12 items-center justify-center gap-2">
                   <Spinner className="w-6 h-6 text-primary" />
-                  <p className="text-xs text-muted-foreground">Menarik data dari Supabase...</p>
+                  <p className="text-xs text-muted-foreground">Menarik log dari database...</p>
                 </div>
               ) : historyData.pasang.length === 0 && historyData.lepas.length === 0 ? (
                 <div className="text-center py-12 text-muted-foreground">
