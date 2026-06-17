@@ -25,12 +25,15 @@ const formatDate = (str: string): string => {
 };
 
 const getEffectiveStatus = (item: MasterStok): string => {
+  // status_saat_ini adalah sumber utama — selalu diupdate saat aksi dilakukan
   const status = (item.status_saat_ini || "").trim().toUpperCase();
-  const kondisi = (item.kondisi_sisir || "").trim().toUpperCase();
   if (status.includes("DIPAKAI") || status.includes("PAKAI")) return "Dipakai";
-  if (status.includes("SERVICE") || status.includes("REPAIR") || status.includes("SUPPLIER")) return "Service";
-  if (status.includes("RUSAK") || kondisi.includes("RUSAK")) return "Rusak";
+  if (status.includes("SERVICE") || status.includes("REPAIR")) return "Service";
+  if (status.includes("RUSAK")) return "Rusak";
   if (status.includes("GUDANG")) return "Gudang";
+  // Fallback: jika status tidak dikenali, cek kondisi_sisir
+  const kondisi = (item.kondisi_sisir || "").trim().toUpperCase();
+  if (kondisi.includes("RUSAK")) return "Rusak";
   return status || "-";
 };
 
@@ -41,7 +44,7 @@ export default function StokPage() {
   const [stok, setStok] = useState<MasterStok[]>([]);
   const [historyData, setHistoryData] = useState<CombinedHistory[]>([]);
   const [loading, setLoading] = useState(true);
-  const [actionLoading, setActionLoading] = useState(false); // ← loading khusus untuk aksi tombol
+  const [actionLoading, setActionLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<FilterKey>("Semua");
   const [searchQuery, setSearchQuery] = useState("");
@@ -96,7 +99,6 @@ export default function StokPage() {
       combined.sort((a, b) => new Date(b.tanggal).getTime() - new Date(a.tanggal).getTime());
       setHistoryData(combined);
 
-      // Sinkronkan selectedReed jika sedang terbuka
       const current = selectedReedRef.current;
       if (current) {
         const updated = stokData.find((s) => s.id_sisir === current.id_sisir);
@@ -144,29 +146,27 @@ export default function StokPage() {
     }
   };
 
-  // ─── Kirim Service ────────────────────────────────────────────────────────
-  // FIX: Sekarang update MASTER_STOK + insert HISTORY_LEPAS secara bersamaan
+  // ─── Kirim Service (GUDANG → SERVICE) ────────────────────────────────────
   const handleKirimService = async () => {
     if (!selectedReed) return;
     const id = selectedReed.id_sisir;
     const tanggal = new Date().toISOString();
+    const supplier = selectedReed.merk_supplier || "Supplier";
 
     setActionLoading(true);
     try {
-      // 1. Update status di MASTER_STOK dulu (ini yang sebelumnya hilang!)
       await updateRowInSheet("MASTER_STOK", "id_sisir", id, {
         status_saat_ini: "SERVICE",
         kondisi_sisir: "RUSAK",
       });
 
-      // 2. Catat ke HISTORY_LEPAS
       await addRowToSheet("HISTORY_LEPAS", {
         tanggal_lepas: tanggal,
-        nomor_mesin: "Kirim Supplier",
+        nomor_mesin: `Dikirim ke ${supplier}`,
         id_sisir: id,
         nomor_sisir_destiny: selectedReed.nomor_sisir_destiny || "",
         nama_mekanik: "-",
-        kondisi_sisir: "RUSAK",
+        kondisi_sisir: "KIRIM_SERVICE",
         created_by: currentUser?.nama || "-",
       });
 
@@ -180,39 +180,38 @@ export default function StokPage() {
     }
   };
 
-  // ─── Terima Service / Selesai Perbaiki ───────────────────────────────────
-  // FIX: Sekarang update MASTER_STOK + insert HISTORY_LEPAS secara bersamaan
-  const handleTerimaService = async () => {
+  // ─── Kembalikan ke Gudang (SERVICE atau RUSAK → GUDANG BAGUS) ───────────
+  const handleKembalikanKeGudang = async () => {
     if (!selectedReed) return;
     const idSisir = selectedReed.id_sisir;
     const nomorDestiny = selectedReed.nomor_sisir_destiny || "";
     const tanggalSekarang = new Date().toISOString();
+    const supplier = selectedReed.merk_supplier || "Supplier";
+    const catatanMesin = isService ? `Diterima dari ${supplier}` : "SELESAI PERBAIKI";
 
     setActionLoading(true);
     try {
-      // 1. Update status di MASTER_STOK dulu
       await updateRowInSheet("MASTER_STOK", "id_sisir", idSisir, {
         status_saat_ini: "GUDANG",
         kondisi_sisir: "BAGUS",
-        mesin_terpasang: null, // kosongkan mesin jika ada
+        mesin_terpasang: null,
       });
 
-      // 2. Catat ke HISTORY_LEPAS
       await addRowToSheet("HISTORY_LEPAS", {
         tanggal_lepas: tanggalSekarang,
-        nomor_mesin: "DARI SUPPLIER",
+        nomor_mesin: catatanMesin,
         id_sisir: idSisir,
         nomor_sisir_destiny: nomorDestiny,
-        nama_mekanik: "-",
+        nama_mekanik: currentUser?.nama || "-",
         kondisi_sisir: "BAIK",
         created_by: currentUser?.nama || "-",
       });
 
-      toast.success("Sisir berhasil diterima dari service");
+      toast.success("Sisir berhasil dikembalikan ke stok gudang");
       setIsDetailOpen(false);
       await loadData();
     } catch (err: any) {
-      toast.error(err.message || "Gagal menerima data service");
+      toast.error(err.message || "Gagal memperbarui status sisir");
     } finally {
       setActionLoading(false);
     }
@@ -242,17 +241,11 @@ export default function StokPage() {
     }
   };
 
-  // ─── Counts & Filter ──────────────────────────────────────────────────────
-  const counts: Record<FilterKey, number> = {
-    Semua: stok.length,
-    Gudang: stok.filter((s) => getEffectiveStatus(s) === "Gudang").length,
-    Dipakai: stok.filter((s) => getEffectiveStatus(s) === "Dipakai").length,
-    Rusak: stok.filter((s) => getEffectiveStatus(s) === "Rusak").length,
-    Service: stok.filter((s) => getEffectiveStatus(s) === "Service").length,
-  };
 
-  const filteredStok = (() => {
-    let list = filter === "Semua" ? stok : stok.filter((s) => getEffectiveStatus(s) === filter);
+  // ─── Counts & Filter ──────────────────────────────────────────────────────
+  // 1. Filter berdasarkan search query dulu (tanpa tab filter)
+  const searchFilteredStok = (() => {
+    let list = stok;
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
       list = list.filter(
@@ -263,6 +256,21 @@ export default function StokPage() {
           s.posisi_rak?.toLowerCase().includes(q)
       );
     }
+    return list;
+  })();
+
+  // 2. Hitung counts dari hasil search (bukan dari data asli)
+  const counts: Record<FilterKey, number> = {
+    Semua: searchFilteredStok.length,
+    Gudang: searchFilteredStok.filter((s) => getEffectiveStatus(s) === "Gudang").length,
+    Dipakai: searchFilteredStok.filter((s) => getEffectiveStatus(s) === "Dipakai").length,
+    Rusak: searchFilteredStok.filter((s) => getEffectiveStatus(s) === "Rusak").length,
+    Service: searchFilteredStok.filter((s) => getEffectiveStatus(s) === "Service").length,
+  };
+
+  // 3. Filter berdasarkan tab + search (untuk tampilan list)
+  const filteredStok = (() => {
+    let list = filter === "Semua" ? searchFilteredStok : searchFilteredStok.filter((s) => getEffectiveStatus(s) === filter);
     return list;
   })();
 
@@ -434,7 +442,7 @@ export default function StokPage() {
 
       {/* Detail Dialog */}
       <Dialog open={isDetailOpen} onOpenChange={(open) => {
-        if (!actionLoading) setIsDetailOpen(open); // cegah dialog tertutup saat loading
+        if (!actionLoading) setIsDetailOpen(open);
       }}>
         <DialogContent className="max-h-[90vh] overflow-y-auto">
           {selectedReed && (
@@ -511,7 +519,7 @@ export default function StokPage() {
                     {isService && (
                       <Button
                         className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white"
-                        onClick={handleTerimaService}
+                        onClick={handleKembalikanKeGudang}
                         disabled={actionLoading}
                       >
                         <PackageCheck className="w-4 h-4 mr-2" />
@@ -563,7 +571,7 @@ export default function StokPage() {
                       <Button
                         variant="outline"
                         className="flex-1 border-emerald-500/50 text-emerald-500 hover:bg-emerald-500/10"
-                        onClick={handleTerimaService}
+                        onClick={handleKembalikanKeGudang}
                         disabled={actionLoading}
                       >
                         <Wrench className="w-4 h-4 mr-2" />
@@ -572,22 +580,37 @@ export default function StokPage() {
                     )}
                   </div>
 
+                  {/* Cetak PDF — Admin */}
                   <Button
                     variant="secondary"
                     className="w-full"
-                    onClick={() => generateReedHistoryPDF(selectedReed.id_sisir, selectedReed.nomor_sisir_destiny, reedHistory)}
+                    onClick={() =>
+                      generateReedHistoryPDF(
+                        selectedReed.id_sisir,
+                        selectedReed.nomor_sisir_destiny,
+                        reedHistory,
+                        currentUser?.nama || "___________________"
+                      )
+                    }
                   >
                     <FileText className="w-4 h-4 mr-2" /> Cetak PDF Riwayat
                   </Button>
                 </div>
               )}
 
-              {/* Cetak PDF untuk non-admin */}
+              {/* Cetak PDF — Non-Admin */}
               {!isAdmin && (
                 <Button
                   variant="secondary"
                   className="w-full"
-                  onClick={() => generateReedHistoryPDF(selectedReed.id_sisir, selectedReed.nomor_sisir_destiny, reedHistory)}
+                  onClick={() =>
+                    generateReedHistoryPDF(
+                      selectedReed.id_sisir,
+                      selectedReed.nomor_sisir_destiny,
+                      reedHistory,
+                      currentUser?.nama || "___________________"
+                    )
+                  }
                 >
                   <FileText className="w-4 h-4 mr-2" /> Cetak PDF Riwayat
                 </Button>

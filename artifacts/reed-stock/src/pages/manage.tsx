@@ -408,16 +408,9 @@ export default function ManagePage() {
   };
 
   // ─── Filter + Search + Sort ───────────────────────────────────────────────
-  const counts: Record<FilterKey, number> = {
-    Semua: machines.length,
-    Aktif: machines.filter(hasActiveReed).length,
-    "Non Aktif": machines.filter((m) => !hasActiveReed(m)).length,
-  };
-
-  const filteredMachines = (() => {
+  // 1. Filter berdasarkan search query dulu (tanpa tab filter)
+  const searchFilteredMachines = (() => {
     let list = machines;
-    if (filter === "Aktif") list = list.filter(hasActiveReed);
-    if (filter === "Non Aktif") list = list.filter((m) => !hasActiveReed(m));
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
       list = list.filter(
@@ -428,6 +421,21 @@ export default function ManagePage() {
           (m.posisi_gedung || "").toLowerCase().includes(q)
       );
     }
+    return list;
+  })();
+
+  // 2. Hitung counts dari hasil search (bukan dari data asli)
+  const counts: Record<FilterKey, number> = {
+    Semua: searchFilteredMachines.length,
+    Aktif: searchFilteredMachines.filter(hasActiveReed).length,
+    "Non Aktif": searchFilteredMachines.filter((m) => !hasActiveReed(m)).length,
+  };
+
+  // 3. Filter berdasarkan tab + search (untuk tampilan list)
+  const filteredMachines = (() => {
+    let list = searchFilteredMachines;
+    if (filter === "Aktif") list = list.filter(hasActiveReed);
+    if (filter === "Non Aktif") list = list.filter((m) => !hasActiveReed(m));
     return [...list].sort((a, b) => {
       const aActive = hasActiveReed(a) ? 0 : 1;
       const bActive = hasActiveReed(b) ? 0 : 1;
