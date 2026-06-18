@@ -8,12 +8,11 @@ import { toast } from "sonner";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { generateMachineHistoryPDF } from "@/lib/pdf";
+import { generateMachineHistoryPDF, generateLiveTrackingPDF, LiveTrackingRow } from "@/lib/pdf";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth";
-
 const formatDate = (str: string): string => {
   if (!str || str === "-") return "-";
   try {
@@ -24,7 +23,6 @@ const formatDate = (str: string): string => {
     return str;
   }
 };
-
 const calculateDuration = (dateStr: string) => {
   if (!dateStr) return "";
   try {
@@ -37,13 +35,11 @@ const calculateDuration = (dateStr: string) => {
     return "";
   }
 };
-
 const isGudang = (s: MasterStok) => {
   const status = (s.status_saat_ini || "").trim().toLowerCase();
   const kondisi = (s.kondisi_sisir || "").trim().toLowerCase();
   return status.includes("gudang") && !kondisi.includes("rusak");
 };
-
 const hasActiveReed = (machine: LiveTracking): boolean => {
   return !!(
     machine.id_sisir_terpasang &&
@@ -51,9 +47,20 @@ const hasActiveReed = (machine: LiveTracking): boolean => {
     machine.id_sisir_terpasang.trim() !== "-"
   );
 };
-
+// Cari nama mekanik yang memasang sisir yang SEDANG terpasang di mesin ini,
+// dengan mencocokkan nomor_mesin + id_sisir pada riwayat PASANG terbaru.
+const findMekanikPasangTerakhir = (
+  history: CombinedHistory[],
+  nomorMesin: string,
+  idSisir: string
+): string => {
+  if (!idSisir || idSisir === "-") return "-";
+  const match = history.find(
+    (h) => h.type === "PASANG" && h.nomor_mesin === nomorMesin && h.id_sisir === idSisir
+  );
+  return match?.nama_mekanik || "-";
+};
 type FilterKey = "Semua" | "Aktif" | "Non Aktif";
-
 // ─── Searchable Reed Combobox (custom, mobile-friendly) ───────────────────
 function ReedCombobox({
   reeds,
@@ -67,7 +74,6 @@ function ReedCombobox({
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
   const selected = reeds.find((r) => r.id_sisir === value);
-
   const filtered = reeds.filter((r) => {
     const q = search.toLowerCase();
     return (
@@ -75,7 +81,6 @@ function ReedCombobox({
       (r.nomor_sisir_destiny || "").toLowerCase().includes(q)
     );
   });
-
   return (
     <div className="relative w-full">
       {/* Trigger button */}
@@ -91,7 +96,6 @@ function ReedCombobox({
         </span>
         <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
       </button>
-
       {/* Dropdown */}
       {open && (
         <div
@@ -109,7 +113,6 @@ function ReedCombobox({
               className="w-full rounded-sm border border-input bg-background px-2 py-1.5 text-sm outline-none"
             />
           </div>
-
           {/* Scrollable list */}
           <div style={{ overflowY: "scroll", WebkitOverflowScrolling: "touch", flex: 1 }}>
             {filtered.length === 0 ? (
@@ -152,7 +155,6 @@ function ReedCombobox({
           </div>
         </div>
       )}
-
       {/* Overlay untuk tutup dropdown saat klik luar */}
       {open && (
         <div
@@ -163,7 +165,6 @@ function ReedCombobox({
     </div>
   );
 }
-
 export default function ManagePage() {
   const { isAdmin, currentUser } = useAuth();
   const [machines, setMachines] = useState<LiveTracking[]>([]);
@@ -172,24 +173,17 @@ export default function ManagePage() {
   const [actionLoading, setActionLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [historyData, setHistoryData] = useState<CombinedHistory[]>([]);
-
   const [selectedMachine, setSelectedMachine] = useState<LiveTracking | null>(null);
   const [isDetailOpen, setIsDetailOpen] = useState(false);
-
   const [newMachine, setNewMachine] = useState({ nomer_mesin: "", sn_mesin: "", jenis_mesin: "", posisi_gedung: "" });
-
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [editMachineData, setEditMachineData] = useState({ nomer_mesin: "", posisi_gedung: "" });
-
   const [installData, setInstallData] = useState({ id_sisir_terpasang: "", nama_mekanik: "" });
   const [removeData, setRemoveData] = useState({ kondisi_sisir: "", nama_mekanik: "" });
-
   const [searchQuery, setSearchQuery] = useState("");
   const [filter, setFilter] = useState<FilterKey>("Semua");
-
   const selectedMachineRef = useRef<LiveTracking | null>(null);
   selectedMachineRef.current = selectedMachine;
-
   const loadData = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -203,10 +197,8 @@ export default function ManagePage() {
       );
       const hpData: HistoryPasang[] = sheets["HISTORY_PASANG"] || [];
       const hlData: HistoryLepas[] = sheets["HISTORY_LEPAS"] || [];
-
       setMachines(trackData);
       setStok(stokData);
-
       const combined: CombinedHistory[] = [
         ...hpData.map((h) => ({
           type: "PASANG" as const,
@@ -228,7 +220,6 @@ export default function ManagePage() {
       ];
       combined.sort((a, b) => new Date(b.tanggal).getTime() - new Date(a.tanggal).getTime());
       setHistoryData(combined);
-
       const current = selectedMachineRef.current;
       if (current) {
         const updated = trackData.find((m) => m.nomer_mesin === current.nomer_mesin);
@@ -240,9 +231,7 @@ export default function ManagePage() {
       setLoading(false);
     }
   }, []);
-
   useEffect(() => { loadData(); }, [loadData]);
-
   // ─── Tambah Mesin ─────────────────────────────────────────────────────────
   const handleAddMachine = async () => {
     if (!newMachine.nomer_mesin || !newMachine.jenis_mesin) {
@@ -266,7 +255,6 @@ export default function ManagePage() {
       setActionLoading(false);
     }
   };
-
   // ─── Edit Data Mesin ──────────────────────────────────────────────────────
   const handleEditMachine = async () => {
     if (!selectedMachine) return;
@@ -289,7 +277,6 @@ export default function ManagePage() {
       setActionLoading(false);
     }
   };
-
   const openEditDialog = (machine: LiveTracking) => {
     setEditMachineData({
       nomer_mesin: machine.nomer_mesin || "",
@@ -297,7 +284,6 @@ export default function ManagePage() {
     });
     setIsEditOpen(true);
   };
-
   // ─── Pasang Sisir ─────────────────────────────────────────────────────────
   const handleInstallReed = async () => {
     if (!selectedMachine) return;
@@ -311,10 +297,8 @@ export default function ManagePage() {
       toast.error("Sisir dalam kondisi RUSAK tidak bisa dipasang!");
       return;
     }
-
     const tanggal = new Date().toISOString();
     const nomorDestiny = sisirRow?.nomor_sisir_destiny || "";
-
     setActionLoading(true);
     try {
       await updateRowInSheet("LIVE_TRACKING", "nomer_mesin", selectedMachine.nomer_mesin, {
@@ -322,12 +306,10 @@ export default function ManagePage() {
         nomor_sisir_destiny: nomorDestiny,
         tanggal_pasang: tanggal,
       });
-
       await updateRowInSheet("MASTER_STOK", "id_sisir", installData.id_sisir_terpasang, {
         status_saat_ini: "DIPAKAI",
         mesin_terpasang: selectedMachine.nomer_mesin,
       });
-
       await addRowToSheet("HISTORY_PASANG", {
         tanggal_ganti: tanggal,
         nomor_mesin: selectedMachine.nomer_mesin,
@@ -336,7 +318,6 @@ export default function ManagePage() {
         nama_mekanik: installData.nama_mekanik,
         created_by: currentUser?.nama || "-",
       });
-
       toast.success("Sisir berhasil dipasang!");
       setInstallData({ id_sisir_terpasang: "", nama_mekanik: "" });
       setIsDetailOpen(false);
@@ -347,7 +328,6 @@ export default function ManagePage() {
       setActionLoading(false);
     }
   };
-
   // ─── Lepas Sisir ──────────────────────────────────────────────────────────
   const handleRemoveReed = async () => {
     if (!selectedMachine || !selectedMachine.id_sisir_terpasang) return;
@@ -355,12 +335,10 @@ export default function ManagePage() {
       toast.error("Pilih Kondisi dan isi nama Mekanik");
       return;
     }
-
     const tanggal = new Date().toISOString();
     const currentSisir   = selectedMachine.id_sisir_terpasang;
     const currentMesin   = selectedMachine.nomer_mesin;
     const currentDestiny = selectedMachine.nomor_sisir_destiny || "";
-
     const kondisiUpper = removeData.kondisi_sisir.toUpperCase();
     let newSisirStatus = "GUDANG";
     let newSisirKondisi = "BAGUS";
@@ -371,7 +349,6 @@ export default function ManagePage() {
       newSisirStatus = "SERVICE";
       newSisirKondisi = "RUSAK";
     }
-
     setActionLoading(true);
     try {
       await updateRowInSheet("LIVE_TRACKING", "nomer_mesin", currentMesin, {
@@ -379,13 +356,11 @@ export default function ManagePage() {
         nomor_sisir_destiny: "-",
         tanggal_pasang: null,
       });
-
       await updateRowInSheet("MASTER_STOK", "id_sisir", currentSisir, {
         status_saat_ini: newSisirStatus,
         kondisi_sisir: newSisirKondisi,
         mesin_terpasang: null,
       });
-
       await addRowToSheet("HISTORY_LEPAS", {
         tanggal_lepas: tanggal,
         nomor_mesin: currentMesin,
@@ -395,7 +370,6 @@ export default function ManagePage() {
         kondisi_sisir: removeData.kondisi_sisir,
         created_by: currentUser?.nama || "-",
       });
-
       toast.success("Sisir berhasil dilepas!");
       setRemoveData({ kondisi_sisir: "", nama_mekanik: "" });
       setIsDetailOpen(false);
@@ -406,7 +380,35 @@ export default function ManagePage() {
       setActionLoading(false);
     }
   };
+  // ─── Export PDF Live Tracking (Seluruh Mesin) ──────────────────────────────
+  const handleExportLiveTrackingPDF = () => {
+    const rows: LiveTrackingRow[] = [...machines]
+      .sort((a, b) => {
+        const aActive = hasActiveReed(a) ? 0 : 1;
+        const bActive = hasActiveReed(b) ? 0 : 1;
+        if (aActive !== bActive) return aActive - bActive;
+        return (a.nomer_mesin || "").localeCompare(b.nomer_mesin || "");
+      })
+      .map((m) => {
+        const aktif = hasActiveReed(m);
+        return {
+          nomor_mesin: m.nomer_mesin,
+          jenis_mesin: m.jenis_mesin,
+          posisi_gedung: m.posisi_gedung,
+          id_sisir: aktif ? m.id_sisir_terpasang : "-",
+          nomor_destiny: aktif ? (m.nomor_sisir_destiny || "-") : "-",
+          durasi: aktif
+            ? m.durasi_pakai || (m.tanggal_pasang ? calculateDuration(m.tanggal_pasang) : "-")
+            : "-",
+          mekanik: aktif
+            ? findMekanikPasangTerakhir(historyData, m.nomer_mesin, m.id_sisir_terpasang)
+            : "-",
+          aktif,
+        };
+      });
 
+    generateLiveTrackingPDF(rows, currentUser?.nama || "___________________");
+  };
   // ─── Filter + Search + Sort ───────────────────────────────────────────────
   // 1. Filter berdasarkan search query dulu (tanpa tab filter)
   const searchFilteredMachines = (() => {
@@ -423,14 +425,12 @@ export default function ManagePage() {
     }
     return list;
   })();
-
   // 2. Hitung counts dari hasil search (bukan dari data asli)
   const counts: Record<FilterKey, number> = {
     Semua: searchFilteredMachines.length,
     Aktif: searchFilteredMachines.filter(hasActiveReed).length,
     "Non Aktif": searchFilteredMachines.filter((m) => !hasActiveReed(m)).length,
   };
-
   // 3. Filter berdasarkan tab + search (untuk tampilan list)
   const filteredMachines = (() => {
     let list = searchFilteredMachines;
@@ -442,16 +442,13 @@ export default function ManagePage() {
       return aActive - bActive;
     });
   })();
-
   // Semua history mesin (tanpa slice) — untuk PDF lengkap
   const machineHistory = historyData.filter(
     (h) => h.nomor_mesin === selectedMachine?.nomer_mesin
   );
   // Hanya 10 terakhir untuk tampilan UI
   const machineHistoryDisplay = machineHistory.slice(0, 10);
-
   const availableReeds = stok.filter(isGudang);
-
   // ─── Render ───────────────────────────────────────────────────────────────
   if (loading) {
     return (
@@ -460,7 +457,6 @@ export default function ManagePage() {
       </div>
     );
   }
-
   if (error) {
     return (
       <div className="p-4 space-y-3">
@@ -472,67 +468,70 @@ export default function ManagePage() {
       </div>
     );
   }
-
   return (
     <div className="p-4 space-y-4 pb-24">
       {/* Header */}
-      <div className="flex justify-between items-center">
+      <div className="flex justify-between items-center gap-2">
         <h1 className="text-2xl font-bold tracking-tight">Manajemen Mesin</h1>
-        {isAdmin && (
-          <Dialog>
-            <DialogTrigger asChild>
-              <Button size="sm"><Plus className="mr-2 h-4 w-4" />Tambah Mesin</Button>
-            </DialogTrigger>
-            <DialogContent>
-              <DialogHeader><DialogTitle>Tambah Mesin Baru</DialogTitle></DialogHeader>
-              <div className="space-y-4 py-4">
-                <div className="space-y-2">
-                  <Label>No Mesin</Label>
-                  <Input
-                    value={newMachine.nomer_mesin}
-                    onChange={(e) => setNewMachine({ ...newMachine, nomer_mesin: e.target.value })}
-                    placeholder="Contoh: M-01"
-                  />
+        <div className="flex items-center gap-2 shrink-0">
+          <Button size="sm" variant="outline" onClick={handleExportLiveTrackingPDF}>
+            <FileText className="mr-2 h-4 w-4" />Export PDF
+          </Button>
+          {isAdmin && (
+            <Dialog>
+              <DialogTrigger asChild>
+                <Button size="sm"><Plus className="mr-2 h-4 w-4" />Tambah Mesin</Button>
+              </DialogTrigger>
+              <DialogContent>
+                <DialogHeader><DialogTitle>Tambah Mesin Baru</DialogTitle></DialogHeader>
+                <div className="space-y-4 py-4">
+                  <div className="space-y-2">
+                    <Label>No Mesin</Label>
+                    <Input
+                      value={newMachine.nomer_mesin}
+                      onChange={(e) => setNewMachine({ ...newMachine, nomer_mesin: e.target.value })}
+                      placeholder="Contoh: M-01"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>SN Mesin</Label>
+                    <Input
+                      value={newMachine.sn_mesin}
+                      onChange={(e) => setNewMachine({ ...newMachine, sn_mesin: e.target.value })}
+                      placeholder="Serial Number"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Posisi Gedung</Label>
+                    <Input
+                      value={newMachine.posisi_gedung}
+                      onChange={(e) => setNewMachine({ ...newMachine, posisi_gedung: e.target.value })}
+                      placeholder="Contoh: Shed3.1"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Jenis Mesin</Label>
+                    <Input
+                      value={newMachine.jenis_mesin}
+                      onChange={(e) => setNewMachine({ ...newMachine, jenis_mesin: e.target.value })}
+                      placeholder="Contoh: PICANOL AJL"
+                    />
+                  </div>
                 </div>
-                <div className="space-y-2">
-                  <Label>SN Mesin</Label>
-                  <Input
-                    value={newMachine.sn_mesin}
-                    onChange={(e) => setNewMachine({ ...newMachine, sn_mesin: e.target.value })}
-                    placeholder="Serial Number"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Posisi Gedung</Label>
-                  <Input
-                    value={newMachine.posisi_gedung}
-                    onChange={(e) => setNewMachine({ ...newMachine, posisi_gedung: e.target.value })}
-                    placeholder="Contoh: Shed3.1"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Jenis Mesin</Label>
-                  <Input
-                    value={newMachine.jenis_mesin}
-                    onChange={(e) => setNewMachine({ ...newMachine, jenis_mesin: e.target.value })}
-                    placeholder="Contoh: PICANOL AJL"
-                  />
-                </div>
-              </div>
-              <DialogFooter>
-                <Button
-                  onClick={handleAddMachine}
-                  disabled={actionLoading}
-                  className="w-full sm:w-auto bg-emerald-600 hover:bg-emerald-700 text-white"
-                >
-                  {actionLoading ? "Menyimpan..." : "Simpan"}
-                </Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
-        )}
+                <DialogFooter>
+                  <Button
+                    onClick={handleAddMachine}
+                    disabled={actionLoading}
+                    className="w-full sm:w-auto bg-emerald-600 hover:bg-emerald-700 text-white"
+                  >
+                    {actionLoading ? "Menyimpan..." : "Simpan"}
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
+          )}
+        </div>
       </div>
-
       {/* Search */}
       <div className="relative">
         <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground/70" />
@@ -552,7 +551,6 @@ export default function ManagePage() {
           </button>
         )}
       </div>
-
       {/* Filter Tabs */}
       <Tabs value={filter} onValueChange={(v) => setFilter(v as FilterKey)}>
         <TabsList className="w-full grid grid-cols-3 h-auto">
@@ -564,7 +562,6 @@ export default function ManagePage() {
           ))}
         </TabsList>
       </Tabs>
-
       {/* Machine List */}
       {filteredMachines.length === 0 ? (
         <div className="text-center py-12 text-muted-foreground bg-card rounded-lg border border-border">
@@ -615,7 +612,6 @@ export default function ManagePage() {
           })}
         </div>
       )}
-
       {/* Machine Detail Dialog */}
       <Dialog open={isDetailOpen} onOpenChange={(open) => {
         if (!actionLoading) setIsDetailOpen(open);
@@ -636,7 +632,6 @@ export default function ManagePage() {
                   </Button>
                 )}
               </DialogHeader>
-
               <div className="grid grid-cols-2 gap-3 bg-muted/30 p-3 rounded-lg text-sm">
                 <div>
                   <p className="text-xs text-muted-foreground">Jenis</p>
@@ -675,14 +670,12 @@ export default function ManagePage() {
                   )}
                 </div>
               </div>
-
               {!isAdmin && (
                 <div className="flex items-center gap-2 rounded-lg bg-muted/40 border border-border px-3 py-2 text-xs text-muted-foreground">
                   <Lock className="h-3.5 w-3.5" />
                   Login sebagai Admin untuk melakukan aksi pasang/lepas sisir.
                 </div>
               )}
-
               {isAdmin && (
                 <div className="flex gap-2">
                   {!hasActiveReed(selectedMachine) ? (
@@ -765,7 +758,6 @@ export default function ManagePage() {
                       </DialogContent>
                     </Dialog>
                   )}
-
                   {/* Tombol PDF — Admin, kirim semua history (tanpa slice) */}
                   <Button
                     variant="outline"
@@ -782,7 +774,6 @@ export default function ManagePage() {
                   </Button>
                 </div>
               )}
-
               {/* Tombol PDF — Non-Admin */}
               {!isAdmin && (
                 <Button
@@ -799,7 +790,6 @@ export default function ManagePage() {
                   <FileText className="w-4 h-4 mr-2" /> Cetak PDF Riwayat
                 </Button>
               )}
-
               {/* Riwayat — tampil 10 terakhir di UI */}
               <div>
                 <h3 className="font-semibold mb-3 flex items-center gap-2 text-sm">
@@ -836,7 +826,6 @@ export default function ManagePage() {
           )}
         </DialogContent>
       </Dialog>
-
       {/* Modal Edit Data Mesin */}
       <Dialog open={isEditOpen} onOpenChange={(open) => {
         if (!actionLoading) setIsEditOpen(open);
