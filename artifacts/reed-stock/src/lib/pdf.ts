@@ -1,10 +1,8 @@
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
-import { CombinedHistory, MasterStok } from "./types";
+import { CombinedHistory, MasterStok, HistoryPotong, HistoryRiching } from "./types";
 
-// ─── Helper: Normalisasi Nomor Sisir Destiny (samakan X besar/kecil) ────────
-// Memastikan "32x78x115" dan "32X78X115" dianggap SAMA — mencegah data
-// pecah jadi 2 baris berbeda saat direkap/grouping di laporan.
+// ─── Helper: Normalisasi Nomor Sisir Destiny ──────────────────────────────────
 export const normalizeDestiny = (value?: string | null): string => {
   if (!value) return "";
   return value.trim().toUpperCase();
@@ -61,7 +59,6 @@ const addSignatureFooter = (
     doc.text(`Halaman ${i} dari ${pages}`, 196, 290, { align: "right" });
     doc.setTextColor(0, 0, 0);
 
-    // Tanda tangan hanya di halaman terakhir
     if (i === pages) {
       const finalY = finalYOverride ?? (doc as any).lastAutoTable?.finalY ?? 200;
       const sigY = Math.min(finalY + 20, 255);
@@ -117,26 +114,73 @@ export const generateMachineHistoryPDF = (
 };
 
 // ─── PDF Laporan Sisir ────────────────────────────────────────────────────────
+// Menggabungkan history PASANG/LEPAS + RICHING + POTONG dalam satu tabel
+// diurutkan berdasarkan tanggal descending.
 export const generateReedHistoryPDF = (
   reedId: string,
   destiny: string,
   history: CombinedHistory[],
-  operator: string = "___________________"
+  operator: string = "___________________",
+  historyPotong: HistoryPotong[] = [],
+  historyRiching: HistoryRiching[] = []
 ) => {
   const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
 
   addHeader(doc, `ID Sisir: ${reedId}`, `Nomor Destiny: ${normalizeDestiny(destiny) || "-"}`);
 
+  // ── Gabungkan semua history menjadi satu array dengan format seragam ──
+  type UnifiedRow = {
+    tanggal: string;
+    aktivitas: string;
+    detail: string;       // nomor mesin / destiny perubahan / keterangan riching
+    destiny: string;
+    mekanik: string;
+    keterangan: string;
+  };
+
+  const unified: UnifiedRow[] = [
+    // PASANG & LEPAS
+    ...history.map((h) => ({
+      tanggal: h.tanggal,
+      aktivitas: h.type,
+      detail: h.nomor_mesin || "-",
+      destiny: normalizeDestiny(h.nomor_sisir_destiny) || "-",
+      mekanik: h.nama_mekanik || "-",
+      keterangan: h.kondisi_sisir || "-",
+    })),
+    // RICHING
+    ...historyRiching.map((h) => ({
+      tanggal: h.tanggal_kirim,
+      aktivitas: "RICHING",
+      detail: "-",
+      destiny: normalizeDestiny(h.nomor_sisir_destiny) || "-",
+      mekanik: h.nama_operator || "-",
+      keterangan: h.keterangan || "-",
+    })),
+    // POTONG
+    ...historyPotong.map((h) => ({
+      tanggal: h.tanggal_potong,
+      aktivitas: "POTONG",
+      detail: `${normalizeDestiny(h.destiny_sebelum)} → ${normalizeDestiny(h.destiny_sesudah)}`,
+      destiny: normalizeDestiny(h.destiny_sesudah) || "-",
+      mekanik: h.nama_mekanik || "-",
+      keterangan: h.keterangan || "-",
+    })),
+  ];
+
+  // Urutkan tanggal descending (terbaru di atas)
+  unified.sort((a, b) => new Date(b.tanggal).getTime() - new Date(a.tanggal).getTime());
+
   autoTable(doc, {
     startY: 50,
-    head: [["Tanggal", "Aktivitas", "Nomor Mesin", "Nomor Destiny", "Mekanik", "Kondisi"]],
-    body: history.map((h) => [
-      formatTanggal(h.tanggal),
-      h.type,
-      h.nomor_mesin || "-",
-      normalizeDestiny(h.nomor_sisir_destiny) || "-",
-      h.nama_mekanik || "-",
-      h.kondisi_sisir || "-",
+    head: [["Tanggal", "Aktivitas", "Detail", "Nomor Destiny", "Mekanik", "Keterangan"]],
+    body: unified.map((r) => [
+      formatTanggal(r.tanggal),
+      r.aktivitas,
+      r.detail,
+      r.destiny,
+      r.mekanik,
+      r.keterangan,
     ]),
     theme: "striped",
     headStyles: {
@@ -147,8 +191,23 @@ export const generateReedHistoryPDF = (
     },
     styles: { fontSize: 8, overflow: "linebreak" },
     columnStyles: {
-      0: { cellWidth: 26 },
-      1: { cellWidth: 18 },
+      0: { cellWidth: 24 },  // Tanggal
+      1: { cellWidth: 18 },  // Aktivitas
+      2: { cellWidth: 42 },  // Detail (destiny sebelum→sesudah butuh ruang)
+      3: { cellWidth: 28 },  // Nomor Destiny
+      4: { cellWidth: 28 },  // Mekanik
+      5: { cellWidth: 38 },  // Keterangan
+    },
+    // Warna baris per aktivitas
+    didParseCell: (data) => {
+      if (data.section !== "body") return;
+      const aktivitas = String(data.row.raw?.[1] || "");
+      if (data.column.index === 1) {
+        if (aktivitas === "PASANG")  { data.cell.styles.textColor = [22, 163, 74];   data.cell.styles.fontStyle = "bold"; }
+        if (aktivitas === "LEPAS")   { data.cell.styles.textColor = [220, 38, 38];   data.cell.styles.fontStyle = "bold"; }
+        if (aktivitas === "RICHING") { data.cell.styles.textColor = [147, 51, 234];  data.cell.styles.fontStyle = "bold"; }
+        if (aktivitas === "POTONG")  { data.cell.styles.textColor = [234, 88, 12];   data.cell.styles.fontStyle = "bold"; }
+      }
     },
   });
 
@@ -156,13 +215,9 @@ export const generateReedHistoryPDF = (
   doc.save(`Laporan_Sisir_${reedId}.pdf`);
 };
 
-// ─── PDF Rekap Stok per Nomor Destiny ─────────────────────────────────────────
-//
-// Struktur output:
-//   Halaman 1 → Tabel ringkasan: tiap baris = 1 Nomor Destiny,
-//               kolom = Gudang | Dipakai | Rusak | Service | Total
-//   Halaman berikutnya → (tidak ada detail per ID, sesuai permintaan)
-//
+// ─── PDF Rekap Stok per Nomor Destiny → Supplier ─────────────────────────────
+// Group by: destiny (primer) → supplier (sekunder)
+// Kolom: Gudang | Riching | Dipakai | Rusak | Service | Total
 export const generateStokRekapPDF = (
   stokList: MasterStok[],
   getStatus: (item: MasterStok) => string,
@@ -187,49 +242,65 @@ export const generateStokRekapPDF = (
   doc.line(14, 30, 196, 30);
 
   doc.setFontSize(9);
-  doc.text("Laporan: Rekap Total Stok Sisir per Nomor Destiny", 14, 37);
+  doc.text("Laporan: Rekap Total Stok Sisir per Nomor Destiny & Supplier", 14, 37);
   doc.text(`Tanggal Cetak: ${today}`, 196, 37, { align: "right" });
 
-  // ── Bangun struktur: Map<destiny, { Gudang, Dipakai, Rusak, Service }> ──
-  type KondisiKey = "Gudang" | "Dipakai" | "Rusak" | "Service";
-  const KONDISI: KondisiKey[] = ["Gudang", "Dipakai", "Rusak", "Service"];
+  // ── Bangun struktur: Map<"destiny|||supplier", counts> ──
+  type KondisiKey = "Gudang" | "Riching" | "Dipakai" | "Rusak" | "Service";
+  const KONDISI: KondisiKey[] = ["Gudang", "Riching", "Dipakai", "Rusak", "Service"];
 
-  const destinyMap = new Map<string, Record<KondisiKey, number>>();
+  type GroupEntry = {
+    destiny: string;
+    supplier: string;
+    counts: Record<KondisiKey, number>;
+  };
+
+  const groupMap = new Map<string, GroupEntry>();
 
   stokList.forEach((item) => {
-    // Normalisasi: samakan X/x, kosong/null → "(Tidak Ada Destiny)"
-    const destiny = normalizeDestiny(item.nomor_sisir_destiny) || "(Tidak Ada Destiny)";
-    const status = getStatus(item) as KondisiKey;
+    const destiny  = normalizeDestiny(item.nomor_sisir_destiny) || "(Tidak Ada Destiny)";
+    const supplier = (item.merk_supplier || "").trim() || "(Tidak Ada Supplier)";
+    const key      = `${destiny}|||${supplier}`;
+    const status   = getStatus(item) as KondisiKey;
 
-    if (!destinyMap.has(destiny)) {
-      destinyMap.set(destiny, { Gudang: 0, Dipakai: 0, Rusak: 0, Service: 0 });
+    if (!groupMap.has(key)) {
+      groupMap.set(key, {
+        destiny,
+        supplier,
+        counts: { Gudang: 0, Riching: 0, Dipakai: 0, Rusak: 0, Service: 0 },
+      });
     }
 
-    const entry = destinyMap.get(destiny)!;
+    const entry = groupMap.get(key)!;
     if (KONDISI.includes(status)) {
-      entry[status] += 1;
+      entry.counts[status] += 1;
     }
   });
 
-  // ── Urutkan destiny secara alfabetis ──
-  const sortedDestinies = Array.from(destinyMap.entries()).sort(([a], [b]) =>
-    a.localeCompare(b, "id")
-  );
+  // ── Urutkan: destiny ASC → supplier ASC ──
+  const sorted = Array.from(groupMap.values()).sort((a, b) => {
+    const destCmp = a.destiny.localeCompare(b.destiny, "id");
+    if (destCmp !== 0) return destCmp;
+    return a.supplier.localeCompare(b.supplier, "id");
+  });
 
-  // ── Hitung total keseluruhan per kondisi ──
-  const grandTotal: Record<KondisiKey, number> = { Gudang: 0, Dipakai: 0, Rusak: 0, Service: 0 };
-  sortedDestinies.forEach(([, counts]) => {
+  // ── Hitung grand total ──
+  const grandTotal: Record<KondisiKey, number> = {
+    Gudang: 0, Riching: 0, Dipakai: 0, Rusak: 0, Service: 0,
+  };
+  sorted.forEach(({ counts }) => {
     KONDISI.forEach((k) => { grandTotal[k] += counts[k]; });
   });
-  const grandTotalAll =
-    grandTotal.Gudang + grandTotal.Dipakai + grandTotal.Rusak + grandTotal.Service;
+  const grandTotalAll = KONDISI.reduce((s, k) => s + grandTotal[k], 0);
 
   // ── Baris tabel ──
-  const tableBody = sortedDestinies.map(([destiny, counts]) => {
-    const total = counts.Gudang + counts.Dipakai + counts.Rusak + counts.Service;
+  const tableBody = sorted.map(({ destiny, supplier, counts }) => {
+    const total = KONDISI.reduce((s, k) => s + counts[k], 0);
     return [
       destiny,
+      supplier,
       String(counts.Gudang),
+      String(counts.Riching),
       String(counts.Dipakai),
       String(counts.Rusak),
       String(counts.Service),
@@ -237,35 +308,35 @@ export const generateStokRekapPDF = (
     ];
   });
 
-  // ── Render tabel utama ──
+  // ── Render tabel ──
   autoTable(doc, {
     startY: 44,
-    head: [
-      [
-        { content: "Nomor Destiny", rowSpan: 1 },
-        { content: "Gudang",  rowSpan: 1 },
-        { content: "Dipakai", rowSpan: 1 },
-        { content: "Rusak",   rowSpan: 1 },
-        { content: "Service", rowSpan: 1 },
-        { content: "Total",   rowSpan: 1 },
-      ],
-    ],
+    head: [[
+      "Nomor Destiny",
+      "Supplier",
+      "Gudang",
+      "Riching",
+      "Dipakai",
+      "Rusak",
+      "Service",
+      "Total",
+    ]],
     body: tableBody,
-    foot: [
-      [
-        "TOTAL KESELURUHAN",
-        String(grandTotal.Gudang),
-        String(grandTotal.Dipakai),
-        String(grandTotal.Rusak),
-        String(grandTotal.Service),
-        String(grandTotalAll),
-      ],
-    ],
+    foot: [[
+      "TOTAL KESELURUHAN",
+      "",
+      String(grandTotal.Gudang),
+      String(grandTotal.Riching),
+      String(grandTotal.Dipakai),
+      String(grandTotal.Rusak),
+      String(grandTotal.Service),
+      String(grandTotalAll),
+    ]],
     theme: "striped",
     headStyles: {
       fillColor: [15, 23, 42],
       textColor: 255,
-      fontSize: 9,
+      fontSize: 8,
       fontStyle: "bold",
       halign: "center",
     },
@@ -273,52 +344,42 @@ export const generateStokRekapPDF = (
       fillColor: [30, 41, 59],
       textColor: 255,
       fontStyle: "bold",
-      fontSize: 9,
+      fontSize: 8,
       halign: "center",
     },
     alternateRowStyles: {
       fillColor: [245, 247, 250],
     },
     styles: {
-      fontSize: 9,
+      fontSize: 8,
       overflow: "linebreak",
-      cellPadding: 3,
+      cellPadding: 2.5,
     },
     columnStyles: {
-      // Nomor Destiny — lebih lebar
-      0: { cellWidth: 70, halign: "left" },
-      // 4 kondisi — sama lebar, center
-      1: { cellWidth: 25, halign: "center" },
-      2: { cellWidth: 25, halign: "center" },
-      3: { cellWidth: 25, halign: "center" },
-      4: { cellWidth: 25, halign: "center" },
-      // Total — sedikit lebih tebal
-      5: { cellWidth: 22, halign: "center", fontStyle: "bold" },
+      0: { cellWidth: 42, halign: "left"   },  // Destiny
+      1: { cellWidth: 48, halign: "left"   },  // Supplier
+      2: { cellWidth: 16, halign: "center" },  // Gudang
+      3: { cellWidth: 16, halign: "center" },  // Riching
+      4: { cellWidth: 16, halign: "center" },  // Dipakai
+      5: { cellWidth: 16, halign: "center" },  // Rusak
+      6: { cellWidth: 16, halign: "center" },  // Service
+      7: { cellWidth: 14, halign: "center", fontStyle: "bold" },  // Total
     },
-    // Warnai kolom kondisi di body agar mudah dibaca
+    // Warna angka per kondisi
     didParseCell: (data) => {
-      if (data.section === "body") {
-        // Kolom Gudang (1) → biru muda
-        if (data.column.index === 1 && Number(data.cell.raw) > 0) {
-          data.cell.styles.textColor = [37, 99, 235];
-          data.cell.styles.fontStyle = "bold";
-        }
-        // Kolom Dipakai (2) → hijau
-        if (data.column.index === 2 && Number(data.cell.raw) > 0) {
-          data.cell.styles.textColor = [22, 163, 74];
-          data.cell.styles.fontStyle = "bold";
-        }
-        // Kolom Rusak (3) → merah
-        if (data.column.index === 3 && Number(data.cell.raw) > 0) {
-          data.cell.styles.textColor = [220, 38, 38];
-          data.cell.styles.fontStyle = "bold";
-        }
-        // Kolom Service (4) → kuning tua
-        if (data.column.index === 4 && Number(data.cell.raw) > 0) {
-          data.cell.styles.textColor = [161, 98, 7];
-          data.cell.styles.fontStyle = "bold";
-        }
-      }
+      if (data.section !== "body") return;
+      const val = Number(data.cell.raw);
+      if (val <= 0) return;
+      // Gudang (2) → biru
+      if (data.column.index === 2) { data.cell.styles.textColor = [37, 99, 235];   data.cell.styles.fontStyle = "bold"; }
+      // Riching (3) → ungu
+      if (data.column.index === 3) { data.cell.styles.textColor = [147, 51, 234];  data.cell.styles.fontStyle = "bold"; }
+      // Dipakai (4) → hijau
+      if (data.column.index === 4) { data.cell.styles.textColor = [22, 163, 74];   data.cell.styles.fontStyle = "bold"; }
+      // Rusak (5) → merah
+      if (data.column.index === 5) { data.cell.styles.textColor = [220, 38, 38];   data.cell.styles.fontStyle = "bold"; }
+      // Service (6) → kuning tua
+      if (data.column.index === 6) { data.cell.styles.textColor = [161, 98, 7];    data.cell.styles.fontStyle = "bold"; }
     },
   });
 
@@ -328,11 +389,84 @@ export const generateStokRekapPDF = (
   doc.save(`Rekap_Stok_Sisir_${dateStr}.pdf`);
 };
 
-// ─── PDF Live Tracking — Grid Kartu (Seluruh Mesin) ──────────────────────────
-//
-// Setiap mesin ditampilkan sebagai 1 kartu kecil dalam grid 3 kolom (hemat kertas).
-// Isi kartu: No Mesin, Status, ID Sisir, Nomor Destiny, Durasi Pasang, Mekanik.
-//
+// ─── PDF Daftar Sisir Rusak (untuk Approval Buang/Scrap) ─────────────────────
+// Digunakan sebagai dokumen approval sebelum sisir dihapus permanen dari sistem.
+export const generateSisirRusakPDF = (
+  stokRusak: MasterStok[],
+  operator: string = "___________________"
+) => {
+  const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+
+  const today = new Date().toLocaleDateString("id-ID", {
+    day: "2-digit", month: "long", year: "numeric",
+  });
+
+  // ── Header ──
+  doc.setFontSize(15);
+  doc.setFont("helvetica", "bold");
+  doc.text("PT. TRIPUTRA TEXTILE INDUSTRIES", 105, 18, { align: "center" });
+  doc.setFontSize(10);
+  doc.setFont("helvetica", "normal");
+  doc.text("Weaving Reed Tracking System", 105, 25, { align: "center" });
+  doc.setLineWidth(0.6);
+  doc.line(14, 30, 196, 30);
+
+  doc.setFontSize(9);
+  doc.text("Laporan: Daftar Sisir Rusak — Permohonan Penghapusan (Buang/Scrap)", 14, 37);
+  doc.text(`Tanggal Cetak: ${today}`, 196, 37, { align: "right" });
+
+  // ── Keterangan approval ──
+  doc.setFontSize(8);
+  doc.setTextColor(120, 120, 120);
+  doc.text(
+    `Total sisir rusak: ${stokRusak.length} unit. Dokumen ini digunakan sebagai dasar persetujuan penghapusan data dari sistem.`,
+    14, 43
+  );
+  doc.setTextColor(0, 0, 0);
+
+  // ── Tabel ──
+  autoTable(doc, {
+    startY: 48,
+    head: [["No", "ID Sisir", "Nomor Destiny", "Supplier", "Posisi Rak", "Kondisi", "Paraf"]],
+    body: stokRusak.map((item, idx) => [
+      String(idx + 1),
+      item.id_sisir || "-",
+      normalizeDestiny(item.nomor_sisir_destiny) || "-",
+      item.merk_supplier || "-",
+      item.posisi_rak || "-",
+      item.kondisi_sisir || "RUSAK",
+      "",  // kolom paraf kosong untuk tanda tangan manual
+    ]),
+    theme: "striped",
+    headStyles: {
+      fillColor: [153, 27, 27],  // merah tua — penanda dokumen rusak/scrap
+      textColor: 255,
+      fontSize: 8,
+      fontStyle: "bold",
+      halign: "center",
+    },
+    alternateRowStyles: {
+      fillColor: [254, 242, 242],  // merah sangat muda
+    },
+    styles: { fontSize: 8, overflow: "linebreak", cellPadding: 2.5 },
+    columnStyles: {
+      0: { cellWidth: 10, halign: "center" },  // No
+      1: { cellWidth: 26, halign: "left"   },  // ID Sisir
+      2: { cellWidth: 32, halign: "left"   },  // Nomor Destiny
+      3: { cellWidth: 42, halign: "left"   },  // Supplier
+      4: { cellWidth: 24, halign: "left"   },  // Posisi Rak
+      5: { cellWidth: 32, halign: "left"   },  // Kondisi
+      6: { cellWidth: 16, halign: "center" },  // Paraf
+    },
+  });
+
+  addSignatureFooter(doc, operator);
+
+  const dateStr = new Date().toISOString().slice(0, 10);
+  doc.save(`Daftar_Sisir_Rusak_${dateStr}.pdf`);
+};
+
+// ─── PDF Live Tracking — Grid Kartu ──────────────────────────────────────────
 export interface LiveTrackingRow {
   nomor_mesin: string;
   jenis_mesin?: string;
@@ -352,12 +486,10 @@ const drawMachineCard = (
   h: number,
   row: LiveTrackingRow
 ) => {
-  // Kotak pembatas kartu
   doc.setDrawColor(215, 215, 215);
   doc.setLineWidth(0.2);
   doc.rect(x, y, w, h);
 
-  // No Mesin (kiri atas) + Status (kanan atas)
   doc.setFontSize(8);
   doc.setFont("helvetica", "bold");
   doc.setTextColor(15, 23, 42);
@@ -369,11 +501,9 @@ const drawMachineCard = (
   else doc.setTextColor(150, 150, 150);
   doc.text(row.aktif ? "AKTIF" : "NON AKTIF", x + w - 2, y + 4, { align: "right" });
 
-  // Garis pembatas
   doc.setDrawColor(232, 232, 232);
   doc.line(x + 1.5, y + 6, x + w - 1.5, y + 6);
 
-  // Detail 2x2: ID Sisir | Nomor Destiny // Durasi Pasang | Mekanik
   const colW = (w - 4) / 2;
   const detail: [string, string][] = [
     ["ID Sisir", row.id_sisir || "-"],
@@ -409,14 +539,14 @@ export const generateLiveTrackingPDF = (
 
   addHeader(doc, "Laporan: Live Tracking Seluruh Mesin", `Total Mesin: ${rows.length}`);
 
-  const marginX = 12;
-  const marginTop = 47;
+  const marginX     = 12;
+  const marginTop   = 47;
   const marginBottom = 16;
-  const gap = 3;
-  const cols = 3;
-  const pageHeight = 297;
-  const boxWidth = (210 - marginX * 2 - gap * (cols - 1)) / cols;
-  const boxHeight = 22;
+  const gap         = 3;
+  const cols        = 3;
+  const pageHeight  = 297;
+  const boxWidth    = (210 - marginX * 2 - gap * (cols - 1)) / cols;
+  const boxHeight   = 22;
 
   let x = marginX;
   let y = marginTop;
@@ -424,7 +554,6 @@ export const generateLiveTrackingPDF = (
   let pageMaxY = marginTop;
 
   rows.forEach((row) => {
-    // Pindah halaman jika kartu tidak akan muat
     if (y + boxHeight > pageHeight - marginBottom) {
       doc.addPage();
       y = 16;
@@ -446,8 +575,6 @@ export const generateLiveTrackingPDF = (
     }
   });
 
-  // sigY dihitung dari posisi kartu terakhir di halaman terakhir,
-  // bukan dari lastAutoTable (karena grid ini tidak memakai autoTable)
   addSignatureFooter(doc, operator, pageMaxY);
 
   const dateStr = new Date().toISOString().slice(0, 10);

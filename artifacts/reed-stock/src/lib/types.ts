@@ -31,7 +31,7 @@ export interface HistoryPasang {
   id_sisir: string;
   nomor_sisir_destiny?: string;
   nama_mekanik?: string;
-  created_by?: string;   // ← nama user yang menginput
+  created_by?: string;
   created_at?: string;
 }
 
@@ -43,7 +43,30 @@ export interface HistoryLepas {
   nomor_sisir_destiny?: string;
   nama_mekanik?: string;
   kondisi_sisir?: string;
-  created_by?: string;   // ← nama user yang menginput
+  created_by?: string;
+  created_at?: string;
+}
+
+export interface HistoryRiching {
+  id?: number;
+  id_sisir: string;
+  nomor_sisir_destiny?: string;
+  nama_operator: string;
+  tanggal_kirim: string;
+  keterangan?: string;
+  created_by?: string;
+  created_at?: string;
+}
+
+export interface HistoryPotong {
+  id?: number;
+  id_sisir: string;
+  destiny_sebelum: string;
+  destiny_sesudah: string;
+  nama_mekanik?: string;
+  keterangan?: string;
+  tanggal_potong: string;
+  created_by?: string;
   created_at?: string;
 }
 
@@ -55,5 +78,10 @@ export interface CombinedHistory {
   nama_mekanik?: string;
   tanggal: string;
   kondisi_sisir?: string;
-  created_by?: string;   // ← nama user yang menginput
+  created_by?: string;
+  // ─── field tambahan untuk RICHING & POTONG ───
+  nama_operator?: string;
+  keterangan?: string;
+  destiny_sebelum?: string;
+  destiny_sesudah?: string;
 }

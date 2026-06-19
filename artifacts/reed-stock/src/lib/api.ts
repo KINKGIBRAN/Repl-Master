@@ -2,10 +2,12 @@ import { supabase } from "./supabaseClient";
 
 // ─── Mapping nama "sheet" lama ke nama tabel Supabase yang sebenarnya ──────
 const TABLE_MAP: Record<string, string> = {
-  MASTER_STOK: "master_stok",
-  LIVE_TRACKING: "live_tracking",
-  HISTORY_PASANG: "history_pasang",
-  HISTORY_LEPAS: "history_lepas",
+  MASTER_STOK:     "master_stok",
+  LIVE_TRACKING:   "live_tracking",
+  HISTORY_PASANG:  "history_pasang",
+  HISTORY_LEPAS:   "history_lepas",
+  HISTORY_RICHING: "history_riching",
+  HISTORY_POTONG:  "history_potong",
 };
 
 const READ_TABLE_MAP: Record<string, string> = {
@@ -44,8 +46,36 @@ export function invalidateCache(sheetName?: string) {
 function normalizeDestiny(val: string): string {
   return val
     .trim()
-    .replace(/\s+/g, "")   // hapus semua spasi
-    .toUpperCase();          // ubah x → X, huruf kecil lain → kapital
+    .replace(/\s+/g, "")
+    .toUpperCase();
+}
+
+// ─── CSV Line Parser (handle quoted fields dengan koma di dalamnya) ──────────
+// Contoh: "REED, LTD" tidak akan terpecah menjadi 2 kolom
+function parseCSVLine(line: string): string[] {
+  const result: string[] = [];
+  let current = "";
+  let inQuotes = false;
+
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (ch === '"') {
+      if (inQuotes && line[i + 1] === '"') {
+        // Escaped quote ("") → satu tanda kutip literal
+        current += '"';
+        i++;
+      } else {
+        inQuotes = !inQuotes;
+      }
+    } else if (ch === "," && !inQuotes) {
+      result.push(current.trim());
+      current = "";
+    } else {
+      current += ch;
+    }
+  }
+  result.push(current.trim());
+  return result;
 }
 
 // ─── GET ──────────────────────────────────────────────────────────────────────
@@ -150,7 +180,7 @@ export async function deleteRowFromSheet(
 }
 
 // ─── EXPORT TEMPLATE ─────────────────────────────────────────────────────────
-export async function exportTemplateCSV(): Promise<string> {
+export function exportTemplateCSV(): string {
   const headers = [
     "id_sisir",
     "nomor_sisir_destiny",
@@ -187,7 +217,8 @@ export async function importBulkFromFile(
   }
 
   const headerLine = lines[0];
-  const headers = headerLine.split(",").map((h) => h.replace(/"/g, "").trim());
+  // ✅ Gunakan parseCSVLine agar header dengan koma dalam quotes tidak terpecah
+  const headers = parseCSVLine(headerLine);
 
   const validHeaders = [
     "id_sisir",
@@ -208,9 +239,8 @@ export async function importBulkFromFile(
     const line = lines[i].trim();
     if (!line) continue;
 
-    const cells = line
-      .split(",")
-      .map((cell) => cell.replace(/"/g, "").trim());
+    // ✅ Gunakan parseCSVLine agar nilai dengan koma dalam quotes tidak terpecah
+    const cells = parseCSVLine(line);
 
     const row: Record<string, string> = {};
     headers.forEach((header, idx) => {

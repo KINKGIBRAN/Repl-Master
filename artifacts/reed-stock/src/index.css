@@ -93,71 +93,119 @@
   --radius-xl: calc(var(--radius) + 4px);
 }
 
+/*
+  ═══════════════════════════════════════════════════════
+  DENIM PALETTE — PT. Triputra Textile Industries
+  ───────────────────────────────────────────────────────
+  Background   : #0D1520  Raw denim, very dark navy
+  Card         : #111E2E  Dark washed denim
+  Border       : #1E3250  Indigo seam line
+  Primary      : #4A7FC1  Denim blue (washed)
+  Primary-fg   : #E8EDF5  Cotton white
+  Accent warn  : #B8960C  Brass button gold
+  Destructive  : #C0392B  Selvedge red
+  Muted-fg     : #7A92B0  Faded denim label
+  ═══════════════════════════════════════════════════════
+*/
+
 :root, .dark {
-  --button-outline: rgba(255,255,255, .10);
-  --badge-outline: rgba(255,255,255, .05);
+  --button-outline: rgba(255,255,255, .08);
+  --badge-outline: rgba(255,255,255, .04);
 
   --opaque-button-border-intensity: 9;
 
   --elevate-1: rgba(255,255,255, .04);
-  --elevate-2: rgba(255,255,255, .09);
+  --elevate-2: rgba(255,255,255, .08);
 
-  --background: 222 47% 11%;
-  --foreground: 210 40% 97%;
-  --border: 215 25% 27%;
-  --card: 215 28% 17%;
-  --card-foreground: 210 40% 97%;
-  --card-border: 215 25% 27%;
-  --sidebar: 215 28% 17%;
-  --sidebar-foreground: 210 40% 97%;
-  --sidebar-border: 215 25% 27%;
-  --sidebar-primary: 142 71% 45%;
-  --sidebar-primary-foreground: 222 47% 11%;
-  --sidebar-accent: 215 25% 27%;
-  --sidebar-accent-foreground: 210 40% 97%;
-  --sidebar-ring: 142 71% 45%;
-  --popover: 215 28% 17%;
-  --popover-foreground: 210 40% 97%;
-  --popover-border: 215 25% 27%;
-  --primary: 142 71% 45%;
-  --primary-foreground: 222 47% 11%;
-  --secondary: 215 25% 27%;
-  --secondary-foreground: 210 40% 97%;
-  --muted: 215 25% 27%;
-  --muted-foreground: 215 16% 65%;
-  --accent: 215 25% 27%;
-  --accent-foreground: 210 40% 97%;
-  --destructive: 0 84% 60%;
-  --destructive-foreground: 210 40% 97%;
-  --input: 215 20% 35%;
-  --ring: 142 71% 45%;
-  --chart-1: 142 71% 45%;
-  --chart-2: 215 25% 27%;
-  --chart-3: 0 84% 60%;
-  --chart-4: 215 16% 65%;
-  --chart-5: 210 40% 97%;
+  /* ── Base ── */
+  /* Raw denim dark: #0D1520 */
+  --background:    220 40% 9%;
+  /* Cotton white: #E8EDF5 */
+  --foreground:    216 36% 94%;
+
+  /* ── Borders ── */
+  /* Indigo seam: #1E3250 */
+  --border:        214 45% 21%;
+  /* Input field: #1A2D47 */
+  --input:         214 45% 19%;
+  /* Ring: denim blue */
+  --ring:          214 55% 52%;
+
+  /* ── Cards ── */
+  /* Dark washed denim: #111E2E */
+  --card:          214 45% 13%;
+  --card-foreground: 216 36% 94%;
+  --card-border:   214 45% 21%;
+
+  /* ── Popover ── */
+  --popover:       214 45% 13%;
+  --popover-foreground: 216 36% 94%;
+  --popover-border: 214 45% 21%;
+
+  /* ── Primary — Denim Blue #4A7FC1 ── */
+  --primary:          214 55% 52%;
+  --primary-foreground: 220 40% 9%;
+
+  /* ── Secondary ── */
+  --secondary:     214 38% 20%;
+  --secondary-foreground: 216 36% 94%;
+
+  /* ── Muted ── */
+  --muted:         214 35% 18%;
+  /* Faded denim label: #7A92B0 */
+  --muted-foreground: 214 24% 58%;
+
+  /* ── Accent ── */
+  --accent:        214 38% 20%;
+  --accent-foreground: 216 36% 94%;
+
+  /* ── Destructive — Selvedge Red #C0392B ── */
+  --destructive:   5 63% 47%;
+  --destructive-foreground: 216 36% 94%;
+
+  /* ── Sidebar ── */
+  --sidebar:          214 45% 13%;
+  --sidebar-foreground: 216 36% 94%;
+  --sidebar-border:   214 45% 21%;
+  --sidebar-primary:  214 55% 52%;
+  --sidebar-primary-foreground: 220 40% 9%;
+  --sidebar-accent:   214 38% 20%;
+  --sidebar-accent-foreground: 216 36% 94%;
+  --sidebar-ring:     214 55% 52%;
+
+  /* ── Charts ── */
+  /* chart-1: denim blue */
+  --chart-1: 214 55% 52%;
+  /* chart-2: brass gold */
+  --chart-2: 43 85% 38%;
+  /* chart-3: selvedge red */
+  --chart-3: 5 63% 47%;
+  /* chart-4: faded denim */
+  --chart-4: 214 24% 58%;
+  /* chart-5: cotton white */
+  --chart-5: 216 36% 94%;
 
   --app-font-sans: 'Inter', sans-serif;
   --app-font-serif: Georgia, serif;
   --app-font-mono: Menlo, monospace;
   --radius: .5rem;
-  --shadow-2xs: 0px 2px 0px 0px hsl(202.8169 89.1213% 53.1373% / 0.00);
-  --shadow-xs: 0px 2px 0px 0px hsl(202.8169 89.1213% 53.1373% / 0.00);
-  --shadow-sm: 0px 2px 0px 0px hsl(202.8169 89.1213% 53.1373% / 0.00), 0px 1px 2px -1px hsl(202.8169 89.1213% 53.1373% / 0.00);
-  --shadow: 0px 2px 0px 0px hsl(202.8169 89.1213% 53.1373% / 0.00), 0px 1px 2px -1px hsl(202.8169 89.1213% 53.1373% / 0.00);
-  --shadow-md: 0px 2px 0px 0px hsl(202.8169 89.1213% 53.1373% / 0.00), 0px 2px 4px -1px hsl(202.8169 89.1213% 53.1373% / 0.00);
-  --shadow-lg: 0px 2px 0px 0px hsl(202.8169 89.1213% 53.1373% / 0.00), 0px 4px 6px -1px hsl(202.8169 89.1213% 53.1373% / 0.00);
-  --shadow-xl: 0px 2px 0px 0px hsl(202.8169 89.1213% 53.1373% / 0.00), 0px 8px 10px -1px hsl(202.8169 89.1213% 53.1373% / 0.00);
-  --shadow-2xl: 0px 2px 0px 0px hsl(202.8169 89.1213% 53.1373% / 0.00);
+  --shadow-2xs: 0px 2px 0px 0px rgba(0,0,0,0.00);
+  --shadow-xs:  0px 2px 0px 0px rgba(0,0,0,0.00);
+  --shadow-sm:  0px 2px 0px 0px rgba(0,0,0,0.00), 0px 1px 2px -1px rgba(0,0,0,0.00);
+  --shadow:     0px 2px 0px 0px rgba(0,0,0,0.00), 0px 1px 2px -1px rgba(0,0,0,0.00);
+  --shadow-md:  0px 2px 0px 0px rgba(0,0,0,0.00), 0px 2px 4px -1px rgba(0,0,0,0.00);
+  --shadow-lg:  0px 2px 0px 0px rgba(0,0,0,0.00), 0px 4px 6px -1px rgba(0,0,0,0.00);
+  --shadow-xl:  0px 2px 0px 0px rgba(0,0,0,0.00), 0px 8px 10px -1px rgba(0,0,0,0.00);
+  --shadow-2xl: 0px 2px 0px 0px rgba(0,0,0,0.00);
   --tracking-normal: 0em;
   --spacing: 0.25rem;
 
   --sidebar-primary-border: hsl(from hsl(var(--sidebar-primary)) h s calc(l + var(--opaque-button-border-intensity)) / alpha);
-  --sidebar-accent-border: hsl(from hsl(var(--sidebar-accent)) h s calc(l + var(--opaque-button-border-intensity)) / alpha);
-  --primary-border: hsl(from hsl(var(--primary)) h s calc(l + var(--opaque-button-border-intensity)) / alpha);
-  --secondary-border: hsl(from hsl(var(--secondary)) h s calc(l + var(--opaque-button-border-intensity)) / alpha);
-  --muted-border: hsl(from hsl(var(--muted)) h s calc(l + var(--opaque-button-border-intensity)) / alpha);
-  --accent-border: hsl(from hsl(var(--accent)) h s calc(l + var(--opaque-button-border-intensity)) / alpha);
+  --sidebar-accent-border:  hsl(from hsl(var(--sidebar-accent))  h s calc(l + var(--opaque-button-border-intensity)) / alpha);
+  --primary-border:     hsl(from hsl(var(--primary))     h s calc(l + var(--opaque-button-border-intensity)) / alpha);
+  --secondary-border:   hsl(from hsl(var(--secondary))   h s calc(l + var(--opaque-button-border-intensity)) / alpha);
+  --muted-border:       hsl(from hsl(var(--muted))       h s calc(l + var(--opaque-button-border-intensity)) / alpha);
+  --accent-border:      hsl(from hsl(var(--accent))      h s calc(l + var(--opaque-button-border-intensity)) / alpha);
   --destructive-border: hsl(from hsl(var(--destructive)) h s calc(l + var(--opaque-button-border-intensity)) / alpha);
 }
 
@@ -166,9 +214,53 @@
     @apply border-border;
   }
 
+  html {
+    overflow-x: hidden;
+  }
+
   body {
     @apply font-sans antialiased bg-background text-foreground;
+    overflow-x: hidden;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+    scroll-behavior: smooth;
   }
+
+  button, a, [role="button"] {
+    transition-property: color, background-color, border-color, opacity, transform, box-shadow;
+    transition-duration: 150ms;
+    transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  }
+}
+
+/* ── Animasi modal overlay ── */
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@keyframes fadeOut {
+  from { opacity: 1; }
+  to   { opacity: 0; }
+}
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(16px) scale(0.97); }
+  to   { opacity: 1; transform: translateY(0)    scale(1);    }
+}
+@keyframes slideDown {
+  from { opacity: 1; transform: translateY(0)    scale(1);    }
+  to   { opacity: 0; transform: translateY(16px) scale(0.97); }
+}
+
+.modal-overlay { animation: fadeIn  200ms cubic-bezier(0.4, 0, 0.2, 1)        forwards; }
+.modal-card    { animation: slideUp 250ms cubic-bezier(0.34, 1.56, 0.64, 1)   forwards; }
+
+/* ── Animasi list item masuk ── */
+@keyframes itemFadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0);   }
+}
+.list-item-animate {
+  animation: itemFadeIn 200ms cubic-bezier(0.4, 0, 0.2, 1) both;
 }
 
 @layer utilities {

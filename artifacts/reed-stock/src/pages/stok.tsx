@@ -1,14 +1,14 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import { fetchMultipleSheets, addRowToSheet, updateRowInSheet, exportTemplateCSV, importBulkFromFile } from "@/lib/api";
-import { MasterStok, HistoryPasang, HistoryLepas, CombinedHistory } from "@/lib/types";
+import { fetchMultipleSheets, addRowToSheet, updateRowInSheet, exportTemplateCSV, importBulkFromFile, deleteRowFromSheet } from "@/lib/api";
+import { MasterStok, HistoryPasang, HistoryLepas, HistoryPotong, HistoryRiching, CombinedHistory } from "@/lib/types";
 import { Spinner } from "@/components/ui/spinner";
 import { Button } from "@/components/ui/button";
-import { Plus, FileText, Settings, Scissors, AlertCircle, Search, Lock, Wrench, PackageCheck, Download, Upload, CheckCircle, AlertTriangle } from "lucide-react";
+import { Plus, FileText, Settings, Scissors, AlertCircle, Search, Lock, Wrench, PackageCheck, Download, Upload, CheckCircle, AlertTriangle, Trash2 } from "lucide-react";
 import { toast } from "sonner";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { generateReedHistoryPDF, generateStokRekapPDF } from "@/lib/pdf";
+import { generateReedHistoryPDF, generateStokRekapPDF, generateSisirRusakPDF } from "@/lib/pdf";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { useAuth } from "@/lib/auth";
@@ -29,6 +29,7 @@ const getEffectiveStatus = (item: MasterStok): string => {
   if (status.includes("DIPAKAI") || status.includes("PAKAI")) return "Dipakai";
   if (status.includes("SERVICE") || status.includes("REPAIR")) return "Service";
   if (status.includes("RUSAK")) return "Rusak";
+  if (status.includes("RICHING")) return "Riching";
   if (status.includes("GUDANG")) return "Gudang";
   const kondisi = (item.kondisi_sisir || "").trim().toUpperCase();
   if (kondisi.includes("RUSAK")) return "Rusak";
@@ -52,7 +53,7 @@ function buildDestiny(destiny: string, panjang: string, tinggi: string): string 
     .join("X");
 }
 
-type FilterKey = "Semua" | "Gudang" | "Dipakai" | "Rusak" | "Service";
+type FilterKey = "Semua" | "Gudang" | "Riching" | "Dipakai" | "Rusak" | "Service";
 
 export default function StokPage() {
   const { isAdmin, currentUser } = useAuth();
@@ -67,24 +68,26 @@ export default function StokPage() {
   const [selectedReed, setSelectedReed] = useState<MasterStok | null>(null);
   const [isDetailOpen, setIsDetailOpen] = useState(false);
   const [isAddOpen, setIsAddOpen] = useState(false);
+  const [isBuangOpen, setIsBuangOpen] = useState(false);
 
-  // ─── State Tambah Sisir: destiny dipecah 3 field ──────────────────────────
+  // ─── State Tambah Sisir ───────────────────────────────────────────────────
   const [newReed, setNewReed] = useState({
     id_sisir: "",
-    destiny: "",   // bagian pertama, contoh: "32"
-    panjang: "",   // bagian kedua,  contoh: "78"
-    tinggi: "",    // bagian ketiga, contoh: "115"
+    destiny: "",
+    panjang: "",
+    tinggi: "",
     merk_supplier: "",
     posisi_rak: "",
   });
 
-  // ─── State Potong Sisir: hanya panjang yang bisa diubah ───────────────────
+  // ─── State Potong Sisir ───────────────────────────────────────────────────
   const [cutData, setCutData] = useState({
-    panjang: "",   // satu-satunya field yang bisa diedit
+    panjang: "",
     mekanik: "",
+    keterangan: "",
   });
 
-  // ─── State untuk Import ─────────────────────────────────────────────────
+  // ─── State Import ─────────────────────────────────────────────────────────
   const [isImportOpen, setIsImportOpen] = useState(false);
   const [importFile, setImportFile] = useState<File | null>(null);
   const [importResults, setImportResults] = useState<{
@@ -94,6 +97,13 @@ export default function StokPage() {
   } | null>(null);
   const [importLoading, setImportLoading] = useState(false);
 
+  // ─── State Kirim Riching ──────────────────────────────────────────────────
+  const [isRichingOpen, setIsRichingOpen] = useState(false);
+  const [richingData, setRichingData] = useState({
+    nama_operator: "",
+    keterangan: "",
+  });
+
   const selectedReedRef = useRef<MasterStok | null>(null);
   selectedReedRef.current = selectedReed;
 
@@ -101,12 +111,16 @@ export default function StokPage() {
     setLoading(true);
     setError(null);
     try {
-      const sheets = await fetchMultipleSheets(["MASTER_STOK", "HISTORY_PASANG", "HISTORY_LEPAS"]);
-      const stokData: MasterStok[] = (sheets["MASTER_STOK"] || []).filter(
+      const sheets = await fetchMultipleSheets([
+        "MASTER_STOK", "HISTORY_PASANG", "HISTORY_LEPAS", "HISTORY_POTONG", "HISTORY_RICHING",
+      ]);
+      const stokData: MasterStok[]     = (sheets["MASTER_STOK"]  || []).filter(
         (s: MasterStok) => s.id_sisir && s.id_sisir.trim() !== ""
       );
-      const hpData: HistoryPasang[] = sheets["HISTORY_PASANG"] || [];
-      const hlData: HistoryLepas[] = sheets["HISTORY_LEPAS"] || [];
+      const hpData: HistoryPasang[]    = sheets["HISTORY_PASANG"]  || [];
+      const hlData: HistoryLepas[]     = sheets["HISTORY_LEPAS"]   || [];
+      const hpotData: HistoryPotong[]  = sheets["HISTORY_POTONG"]  || [];
+      const hrData: HistoryRiching[]   = sheets["HISTORY_RICHING"] || [];
 
       setStok(stokData);
 
@@ -127,6 +141,26 @@ export default function StokPage() {
           nama_mekanik: h.nama_mekanik,
           tanggal: h.tanggal_lepas,
           kondisi_sisir: h.kondisi_sisir,
+        })),
+        ...hpotData.map((h) => ({
+          type: "POTONG" as any,
+          nomor_mesin: "-",
+          id_sisir: h.id_sisir,
+          nomor_sisir_destiny: h.destiny_sesudah,
+          nama_mekanik: h.nama_mekanik,
+          tanggal: h.tanggal_potong,
+          keterangan: h.keterangan,
+          destiny_sebelum: h.destiny_sebelum,
+          destiny_sesudah: h.destiny_sesudah,
+        })),
+        ...hrData.map((h) => ({
+          type: "RICHING" as any,
+          nomor_mesin: "-",
+          id_sisir: h.id_sisir,
+          nomor_sisir_destiny: h.nomor_sisir_destiny,
+          nama_mekanik: h.nama_operator,
+          tanggal: h.tanggal_kirim,
+          keterangan: h.keterangan,
         })),
       ];
       combined.sort((a, b) => new Date(b.tanggal).getTime() - new Date(a.tanggal).getTime());
@@ -232,7 +266,7 @@ export default function StokPage() {
       await updateRowInSheet("MASTER_STOK", "id_sisir", idSisir, {
         status_saat_ini: "GUDANG",
         kondisi_sisir: "BAGUS",
-        mesin_terpasang: null,
+        mesin_terpasang: "",
       });
 
       await addRowToSheet("HISTORY_LEPAS", {
@@ -255,25 +289,127 @@ export default function StokPage() {
     }
   };
 
+  // ─── Kirim Riching ────────────────────────────────────────────────────────
+  const handleKirimRiching = async () => {
+    if (!selectedReed) return;
+    if (!richingData.nama_operator.trim()) {
+      toast.error("Nama operator harus diisi");
+      return;
+    }
+
+    const tanggal = new Date().toISOString();
+    setActionLoading(true);
+    try {
+      await updateRowInSheet("MASTER_STOK", "id_sisir", selectedReed.id_sisir, {
+        status_saat_ini: "RICHING",
+        kondisi_sisir: "RICHING",
+      });
+
+      await addRowToSheet("HISTORY_RICHING", {
+        id_sisir: selectedReed.id_sisir,
+        nomor_sisir_destiny: selectedReed.nomor_sisir_destiny || "",
+        nama_operator: richingData.nama_operator.trim(),
+        tanggal_kirim: tanggal,
+        keterangan: richingData.keterangan.trim(),
+        created_by: currentUser?.nama || "-",
+      });
+
+      toast.success("Sisir berhasil dikirim ke proses riching");
+      setRichingData({ nama_operator: "", keterangan: "" });
+      setIsRichingOpen(false);
+      setIsDetailOpen(false);
+      await loadData();
+    } catch (err: any) {
+      toast.error(err.message || "Gagal mengirim sisir ke riching");
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  // ─── Batal Riching — kembalikan ke Gudang ─────────────────────────────────
+  const handleBatalRiching = async () => {
+    if (!selectedReed) return;
+    setActionLoading(true);
+    try {
+      await updateRowInSheet("MASTER_STOK", "id_sisir", selectedReed.id_sisir, {
+        status_saat_ini: "GUDANG",
+        kondisi_sisir: "BAGUS",
+      });
+
+      toast.success("Sisir dikembalikan ke gudang");
+      setIsDetailOpen(false);
+      await loadData();
+    } catch (err: any) {
+      toast.error(err.message || "Gagal mengembalikan sisir ke gudang");
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  // ─── Buang Sisir (hapus permanen) — hanya dari status RUSAK ──────────────
+  const handleBuang = async () => {
+    if (!selectedReed) return;
+    setActionLoading(true);
+    try {
+      await deleteRowFromSheet("MASTER_STOK", "id_sisir", selectedReed.id_sisir);
+      toast.success(`Sisir ${selectedReed.id_sisir} berhasil dihapus dari sistem`);
+      setIsBuangOpen(false);
+      setIsDetailOpen(false);
+      setSelectedReed(null);
+      await loadData();
+    } catch (err: any) {
+      toast.error(err.message || "Gagal menghapus sisir");
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
   // ─── Potong Sisir ─────────────────────────────────────────────────────────
-  // Destiny dan tinggi dikunci dari selectedReed; hanya panjang yang berubah.
   const handlePotong = async () => {
     if (!selectedReed || !cutData.panjang.trim()) {
       toast.error("Isi panjang baru");
       return;
     }
-    const { destiny, tinggi } = parseDestiny(selectedReed.nomor_sisir_destiny || "");
-    const nomorBaru = buildDestiny(destiny, cutData.panjang, tinggi);
+    const { destiny, panjang: panjangSaatIni, tinggi } = parseDestiny(selectedReed.nomor_sisir_destiny || "");
 
-    const updates = {
-      nomor_sisir_destiny: nomorBaru,
-      kondisi_sisir: `Dipotong ${new Date().toLocaleDateString("id-ID")}${cutData.mekanik ? " oleh " + cutData.mekanik : ""}`,
-    };
+    // ── Validasi: panjang baru harus lebih kecil dari panjang saat ini ──
+    const panjangBaru    = parseInt(cutData.panjang, 10);
+    const panjangCurrent = parseInt(panjangSaatIni, 10);
+    if (isNaN(panjangBaru) || panjangBaru <= 0) {
+      toast.error("Panjang baru tidak valid");
+      return;
+    }
+    if (panjangBaru >= panjangCurrent) {
+      toast.error(
+        `Panjang baru (${panjangBaru}) harus lebih kecil dari panjang saat ini (${panjangCurrent})`
+      );
+      return;
+    }
+
+    const destinySebelum = selectedReed.nomor_sisir_destiny || "";
+    const destinySesudah = buildDestiny(destiny, cutData.panjang, tinggi);
+
     setActionLoading(true);
     try {
-      await updateRowInSheet("MASTER_STOK", "id_sisir", selectedReed.id_sisir, updates);
+      // Update dimensi di master_stok
+      await updateRowInSheet("MASTER_STOK", "id_sisir", selectedReed.id_sisir, {
+        nomor_sisir_destiny: destinySesudah,
+        kondisi_sisir: `Dipotong ${new Date().toLocaleDateString("id-ID")}${cutData.mekanik ? " oleh " + cutData.mekanik : ""}`,
+      });
+
+      // Catat ke history_potong
+      await addRowToSheet("HISTORY_POTONG", {
+        id_sisir: selectedReed.id_sisir,
+        destiny_sebelum: destinySebelum,
+        destiny_sesudah: destinySesudah,
+        nama_mekanik: cutData.mekanik.trim() || "-",
+        keterangan: cutData.keterangan.trim(),
+        tanggal_potong: new Date().toISOString(),
+        created_by: currentUser?.nama || "-",
+      });
+
       toast.success("Spesifikasi berhasil diupdate");
-      setCutData({ panjang: "", mekanik: "" });
+      setCutData({ panjang: "", mekanik: "", keterangan: "" });
       setIsDetailOpen(false);
       await loadData();
     } catch (err: any) {
@@ -284,9 +420,9 @@ export default function StokPage() {
   };
 
   // ─── Download Template CSV ────────────────────────────────────────────────
-  const handleDownloadTemplate = async () => {
+  const handleDownloadTemplate = () => {
     try {
-      const csvContent = await exportTemplateCSV();
+      const csvContent = exportTemplateCSV();
       const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
       const link = document.createElement("a");
       const url = URL.createObjectURL(blob);
@@ -316,7 +452,7 @@ export default function StokPage() {
     }
   };
 
-  // ─── Import Bulk dari File ───────────────────────────────────────────────
+  // ─── Import Bulk dari File ────────────────────────────────────────────────
   const handleImportFile = async () => {
     if (!importFile) {
       toast.error("Pilih file terlebih dahulu");
@@ -337,9 +473,7 @@ export default function StokPage() {
           loadData();
         }, 1500);
       } else if (results.success > 0) {
-        toast.warning(
-          `${results.success} berhasil, ${results.failed} gagal. Lihat detail di bawah.`
-        );
+        toast.warning(`${results.success} berhasil, ${results.failed} gagal. Lihat detail di bawah.`);
       } else {
         toast.error(`Semua data gagal diimport. Lihat detail di bawah.`);
       }
@@ -368,10 +502,11 @@ export default function StokPage() {
   })();
 
   const counts: Record<FilterKey, number> = {
-    Semua: searchFilteredStok.length,
-    Gudang: searchFilteredStok.filter((s) => getEffectiveStatus(s) === "Gudang").length,
+    Semua:   searchFilteredStok.length,
+    Gudang:  searchFilteredStok.filter((s) => getEffectiveStatus(s) === "Gudang").length,
+    Riching: searchFilteredStok.filter((s) => getEffectiveStatus(s) === "Riching").length,
     Dipakai: searchFilteredStok.filter((s) => getEffectiveStatus(s) === "Dipakai").length,
-    Rusak: searchFilteredStok.filter((s) => getEffectiveStatus(s) === "Rusak").length,
+    Rusak:   searchFilteredStok.filter((s) => getEffectiveStatus(s) === "Rusak").length,
     Service: searchFilteredStok.filter((s) => getEffectiveStatus(s) === "Service").length,
   };
 
@@ -386,9 +521,10 @@ export default function StokPage() {
   const statusBadge = (item: MasterStok) => {
     const label = getEffectiveStatus(item);
     const styles: Record<string, string> = {
-      Gudang: "bg-blue-500/20 text-blue-400 border-blue-500/40",
+      Gudang:  "bg-blue-500/20 text-blue-400 border-blue-500/40",
+      Riching: "bg-purple-500/20 text-purple-400 border-purple-500/40",
       Dipakai: "bg-primary/20 text-primary border-primary/40",
-      Rusak: "bg-destructive/20 text-destructive border-destructive/40",
+      Rusak:   "bg-destructive/20 text-destructive border-destructive/40",
       Service: "bg-yellow-500/20 text-yellow-400 border-yellow-500/40",
     };
     return (
@@ -399,9 +535,10 @@ export default function StokPage() {
   };
 
   const selectedStatus = selectedReed ? getEffectiveStatus(selectedReed) : "";
-  const isLocked = selectedStatus === "Dipakai";
-  const isRusak = selectedStatus === "Rusak";
-  const isService = selectedStatus === "Service";
+  const isLocked   = selectedStatus === "Dipakai";
+  const isRusak    = selectedStatus === "Rusak";
+  const isService  = selectedStatus === "Service";
+  const isRiching  = selectedStatus === "Riching";
 
   // ─── Render ───────────────────────────────────────────────────────────────
   if (loading) {
@@ -432,7 +569,7 @@ export default function StokPage() {
         <h1 className="text-2xl font-bold tracking-tight">Master Stok Sisir</h1>
 
         <div className="flex items-center gap-2">
-          {/* Tombol Export PDF Rekap */}
+          {/* Export PDF Rekap */}
           <Button
             variant="outline"
             size="sm"
@@ -448,7 +585,25 @@ export default function StokPage() {
             Export
           </Button>
 
-          {/* Tombol Import — hanya Admin */}
+          {/* Export PDF Sisir Rusak — untuk approval buang/scrap, hanya Admin */}
+          {isAdmin && counts.Rusak > 0 && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="border-destructive/50 text-destructive hover:bg-destructive/10"
+              onClick={() =>
+                generateSisirRusakPDF(
+                  stok.filter((s) => getEffectiveStatus(s) === "Rusak"),
+                  currentUser?.nama || "___________________"
+                )
+              }
+            >
+              <Trash2 className="h-4 w-4 mr-1.5" />
+              Rusak ({counts.Rusak})
+            </Button>
+          )}
+
+          {/* Import — hanya Admin */}
           {isAdmin && (
             <Dialog open={isImportOpen} onOpenChange={setIsImportOpen}>
               <DialogTrigger asChild>
@@ -499,9 +654,7 @@ export default function StokPage() {
                         {importResults.success > 0 && (
                           <>
                             <CheckCircle className="h-4 w-4 text-green-500" />
-                            <span>
-                              <strong>{importResults.success}</strong> berhasil
-                            </span>
+                            <span><strong>{importResults.success}</strong> berhasil</span>
                           </>
                         )}
                       </div>
@@ -509,9 +662,7 @@ export default function StokPage() {
                         <>
                           <div className="flex items-center gap-2 text-sm">
                             <AlertTriangle className="h-4 w-4 text-yellow-500" />
-                            <span>
-                              <strong>{importResults.failed}</strong> gagal
-                            </span>
+                            <span><strong>{importResults.failed}</strong> gagal</span>
                           </div>
                           {importResults.errors.length > 0 && (
                             <details className="text-xs">
@@ -554,7 +705,7 @@ export default function StokPage() {
             </Dialog>
           )}
 
-          {/* Tombol Tambah — hanya Admin */}
+          {/* Tambah — hanya Admin */}
           {isAdmin && (
             <Dialog open={isAddOpen} onOpenChange={setIsAddOpen}>
               <DialogTrigger asChild>
@@ -575,16 +726,13 @@ export default function StokPage() {
                     />
                   </div>
 
-                  {/* ── Nomor Sisir Destiny: 3 field terpisah ── */}
                   <div className="space-y-2">
                     <Label>Nomor Sisir Destiny</Label>
                     <div className="flex items-center gap-1.5">
                       <Input
                         className="w-20 text-center"
                         value={newReed.destiny}
-                        onChange={(e) =>
-                          setNewReed({ ...newReed, destiny: e.target.value.replace(/\D/g, "") })
-                        }
+                        onChange={(e) => setNewReed({ ...newReed, destiny: e.target.value.replace(/\D/g, "") })}
                         placeholder="32"
                         maxLength={4}
                       />
@@ -592,9 +740,7 @@ export default function StokPage() {
                       <Input
                         className="w-20 text-center"
                         value={newReed.panjang}
-                        onChange={(e) =>
-                          setNewReed({ ...newReed, panjang: e.target.value.replace(/\D/g, "") })
-                        }
+                        onChange={(e) => setNewReed({ ...newReed, panjang: e.target.value.replace(/\D/g, "") })}
                         placeholder="78"
                         maxLength={4}
                       />
@@ -602,14 +748,11 @@ export default function StokPage() {
                       <Input
                         className="w-20 text-center"
                         value={newReed.tinggi}
-                        onChange={(e) =>
-                          setNewReed({ ...newReed, tinggi: e.target.value.replace(/\D/g, "") })
-                        }
+                        onChange={(e) => setNewReed({ ...newReed, tinggi: e.target.value.replace(/\D/g, "") })}
                         placeholder="115"
                         maxLength={4}
                       />
                     </div>
-                    {/* Preview hasil gabungan */}
                     {(newReed.destiny || newReed.panjang || newReed.tinggi) && (
                       <p className="text-xs text-muted-foreground">
                         Tersimpan sebagai:{" "}
@@ -668,10 +811,10 @@ export default function StokPage() {
         )}
       </div>
 
-      {/* ── Filter Tabs ── */}
+      {/* ── Filter Tabs — 6 kolom ── */}
       <Tabs value={filter} onValueChange={(v) => setFilter(v as FilterKey)}>
-        <TabsList className="w-full grid grid-cols-5 h-auto">
-          {(["Semua", "Gudang", "Dipakai", "Rusak", "Service"] as FilterKey[]).map((tab) => (
+        <TabsList className="w-full grid grid-cols-6 h-auto">
+          {(["Semua", "Gudang", "Riching", "Dipakai", "Rusak", "Service"] as FilterKey[]).map((tab) => (
             <TabsTrigger key={tab} value={tab} className="flex-col gap-0 py-1.5 text-xs">
               <span>{tab}</span>
               <span className="text-[10px] font-bold text-primary">{counts[tab]}</span>
@@ -690,15 +833,17 @@ export default function StokPage() {
           {filteredStok.map((item) => {
             const disp = getEffectiveStatus(item);
             const locked = disp === "Dipakai";
+            const riching = disp === "Riching";
             return (
               <div
                 key={item.id_sisir}
                 onClick={() => { setSelectedReed(item); setIsDetailOpen(true); }}
-                className={`bg-card border border-border p-4 rounded-xl cursor-pointer hover:border-primary/50 transition-colors flex items-center justify-between ${locked ? "opacity-80" : ""}`}
+                className={`bg-card border border-border p-4 rounded-xl cursor-pointer hover:border-primary/50 transition-colors flex items-center justify-between ${locked ? "opacity-80" : ""} ${riching ? "border-purple-500/30" : ""}`}
               >
                 <div className="min-w-0">
                   <div className="font-bold font-mono flex items-center gap-2">
                     {locked && <Lock className="h-3.5 w-3.5 text-muted-foreground shrink-0" />}
+                    {riching && <Wrench className="h-3.5 w-3.5 text-purple-400 shrink-0" />}
                     {item.id_sisir}
                   </div>
                   <div className="text-sm text-muted-foreground truncate">
@@ -766,8 +911,78 @@ export default function StokPage() {
               {isRusak && (
                 <div className="flex items-center gap-2 rounded-lg bg-yellow-500/10 border border-yellow-500/30 px-3 py-2 text-xs text-yellow-600">
                   <AlertCircle className="h-3.5 w-3.5 shrink-0" />
-                  Sisir berstatus <strong>RUSAK</strong>. Kirim ke supplier untuk di-service agar bisa dipakai kembali.
+                  Sisir berstatus <strong>RUSAK</strong>. Kirim ke supplier untuk di-service, atau buang jika sudah tidak bisa digunakan.
                 </div>
+              )}
+
+              {/* Aksi Buang — Admin only, hanya saat RUSAK */}
+              {isAdmin && isRusak && (
+                <>
+                  <div className="space-y-2">
+                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Aksi</p>
+                    <div className="flex gap-2">
+                      <Button
+                        variant="outline"
+                        className="flex-1 border-yellow-500/50 text-yellow-500 hover:bg-yellow-500/10"
+                        onClick={handleKirimService}
+                        disabled={actionLoading}
+                      >
+                        <Settings className="w-4 h-4 mr-2" />
+                        {actionLoading ? "Memproses..." : "Kirim Service"}
+                      </Button>
+                      <Button
+                        variant="outline"
+                        className="flex-1 border-destructive/50 text-destructive hover:bg-destructive/10"
+                        onClick={() => setIsBuangOpen(true)}
+                        disabled={actionLoading}
+                      >
+                        <Trash2 className="w-4 h-4 mr-2" />
+                        Buang / Scrap
+                      </Button>
+                    </div>
+                  </div>
+
+                  {/* Dialog Konfirmasi Buang */}
+                  <Dialog open={isBuangOpen} onOpenChange={setIsBuangOpen}>
+                    <DialogContent>
+                      <DialogHeader>
+                        <DialogTitle className="text-destructive flex items-center gap-2">
+                          <Trash2 className="w-5 h-5" /> Konfirmasi Buang Sisir
+                        </DialogTitle>
+                        <DialogDescription className="pt-2 space-y-2">
+                          <span className="block">
+                            Anda akan menghapus sisir{" "}
+                            <strong className="font-mono text-foreground">{selectedReed.id_sisir}</strong>{" "}
+                            ({selectedReed.nomor_sisir_destiny}) secara <strong>permanen</strong> dari sistem.
+                          </span>
+                          <span className="block text-destructive font-medium">
+                            ⚠ Data tidak dapat dikembalikan setelah dihapus.
+                          </span>
+                          <span className="block">
+                            Pastikan dokumen approval fisik sudah ditandatangani sebelum melanjutkan.
+                          </span>
+                        </DialogDescription>
+                      </DialogHeader>
+                      <DialogFooter className="gap-2 mt-2">
+                        <Button
+                          variant="outline"
+                          onClick={() => setIsBuangOpen(false)}
+                          disabled={actionLoading}
+                        >
+                          Batal
+                        </Button>
+                        <Button
+                          variant="destructive"
+                          onClick={handleBuang}
+                          disabled={actionLoading}
+                        >
+                          <Trash2 className="w-4 h-4 mr-2" />
+                          {actionLoading ? "Menghapus..." : "Ya, Buang Permanen"}
+                        </Button>
+                      </DialogFooter>
+                    </DialogContent>
+                  </Dialog>
+                </>
               )}
 
               {/* Warning: Service */}
@@ -778,13 +993,86 @@ export default function StokPage() {
                 </div>
               )}
 
+              {/* Warning: Riching */}
+              {isRiching && (
+                <div className="flex items-center gap-2 rounded-lg bg-purple-500/10 border border-purple-500/30 px-3 py-2 text-xs text-purple-600">
+                  <Wrench className="h-3.5 w-3.5 shrink-0" />
+                  Sisir sedang dalam proses <strong>RICHING</strong>. Bisa langsung dipasang ke mesin atau dibatalkan kembali ke gudang.
+                </div>
+              )}
+
               {/* Aksi — Admin only, tidak locked */}
               {isAdmin && !isLocked && (
                 <div className="space-y-2">
                   <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Aksi</p>
                   <div className="flex gap-2 flex-wrap">
 
-                    {!isService && (
+                    {/* ── Kirim Riching — hanya dari GUDANG ── */}
+                    {!isRusak && !isService && !isRiching && (
+                      <Dialog open={isRichingOpen} onOpenChange={(open) => {
+                        setIsRichingOpen(open);
+                        if (open) setRichingData({ nama_operator: "", keterangan: "" });
+                      }}>
+                        <DialogTrigger asChild>
+                          <Button
+                            variant="outline"
+                            className="flex-1 border-purple-500/50 text-purple-500 hover:bg-purple-500/10"
+                            disabled={actionLoading}
+                          >
+                            <Wrench className="w-4 h-4 mr-2" />
+                            Kirim Riching
+                          </Button>
+                        </DialogTrigger>
+                        <DialogContent>
+                          <DialogHeader>
+                            <DialogTitle>Kirim Riching — {selectedReed.id_sisir}</DialogTitle>
+                          </DialogHeader>
+                          <div className="space-y-4 py-4">
+                            <div className="space-y-2">
+                              <Label>Nama Operator Riching</Label>
+                              <Input
+                                value={richingData.nama_operator}
+                                onChange={(e) => setRichingData({ ...richingData, nama_operator: e.target.value })}
+                                placeholder="Nama Operator"
+                                autoFocus
+                              />
+                            </div>
+                            <div className="space-y-2">
+                              <Label>
+                                Keterangan{" "}
+                                <span className="text-muted-foreground text-xs">(opsional)</span>
+                              </Label>
+                              <Input
+                                value={richingData.keterangan}
+                                onChange={(e) => setRichingData({ ...richingData, keterangan: e.target.value })}
+                                placeholder="Contoh: untuk plan ganti proses M-05"
+                              />
+                            </div>
+                          </div>
+                          <DialogFooter>
+                            <Button onClick={handleKirimRiching} disabled={actionLoading}>
+                              {actionLoading ? "Memproses..." : "Konfirmasi Kirim"}
+                            </Button>
+                          </DialogFooter>
+                        </DialogContent>
+                      </Dialog>
+                    )}
+
+                    {/* ── Batal Riching — kembalikan ke Gudang ── */}
+                    {isRiching && (
+                      <Button
+                        variant="outline"
+                        className="flex-1 border-purple-500/50 text-purple-500 hover:bg-purple-500/10"
+                        onClick={handleBatalRiching}
+                        disabled={actionLoading}
+                      >
+                        <PackageCheck className="w-4 h-4 mr-2" />
+                        {actionLoading ? "Memproses..." : "Batal Riching"}
+                      </Button>
+                    )}
+
+                    {/* ── Kirim Service — dari GUDANG atau RICHING (bukan dari RUSAK, sudah ada di atas) ── */}
+                    {!isService && !isRusak && (
                       <Button
                         variant="outline"
                         className="flex-1 border-yellow-500/50 text-yellow-500 hover:bg-yellow-500/10"
@@ -796,6 +1084,7 @@ export default function StokPage() {
                       </Button>
                     )}
 
+                    {/* ── Terima Service ── */}
                     {isService && (
                       <Button
                         className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white"
@@ -807,13 +1096,12 @@ export default function StokPage() {
                       </Button>
                     )}
 
-                    {/* Potong — hanya GUDANG */}
-                    {!isRusak && !isService && !isLocked && (() => {
-                      // Parse nilai saat ini untuk ditampilkan
+                    {/* ── Potong — hanya GUDANG (bukan Riching/Rusak/Service) ── */}
+                    {!isRusak && !isService && !isRiching && (() => {
                       const { destiny, panjang, tinggi } = parseDestiny(selectedReed.nomor_sisir_destiny || "");
                       return (
                         <Dialog onOpenChange={(open) => {
-                          if (open) setCutData({ panjang: "", mekanik: "" });
+                          if (open) setCutData({ panjang: "", mekanik: "", keterangan: "" });
                         }}>
                           <DialogTrigger asChild>
                             <Button variant="outline" className="flex-1" disabled={actionLoading}>
@@ -825,12 +1113,9 @@ export default function StokPage() {
                               <DialogTitle>Potong Sisir {selectedReed.id_sisir}</DialogTitle>
                             </DialogHeader>
                             <div className="space-y-4 py-4">
-
-                              {/* Dimensi Baru — destiny & tinggi dikunci, panjang saja yang bisa diubah */}
                               <div className="space-y-2">
                                 <Label>Dimensi Baru (Destiny × Panjang × Tinggi)</Label>
                                 <div className="flex items-center gap-1.5">
-                                  {/* Destiny — read only */}
                                   <Input
                                     className="w-20 text-center bg-muted/50 cursor-not-allowed"
                                     value={destiny}
@@ -839,7 +1124,6 @@ export default function StokPage() {
                                     title="Destiny tidak bisa diubah saat potong"
                                   />
                                   <span className="font-bold text-muted-foreground select-none">X</span>
-                                  {/* Panjang — bisa diubah */}
                                   <Input
                                     className="w-20 text-center"
                                     value={cutData.panjang}
@@ -851,7 +1135,6 @@ export default function StokPage() {
                                     autoFocus
                                   />
                                   <span className="font-bold text-muted-foreground select-none">X</span>
-                                  {/* Tinggi — read only */}
                                   <Input
                                     className="w-20 text-center bg-muted/50 cursor-not-allowed"
                                     value={tinggi}
@@ -861,24 +1144,44 @@ export default function StokPage() {
                                   />
                                 </div>
                                 <p className="text-xs text-muted-foreground">
-                                  Destiny dan tinggi dikunci.{" "}
+                                  Destiny dan tinggi dikunci. Panjang saat ini:{" "}
+                                  <span className="font-mono font-semibold">{panjang}</span>
                                   {cutData.panjang && (
                                     <>
-                                      Hasil:{" "}
-                                      <span className="font-mono font-semibold text-primary">
+                                      {" · "}Hasil:{" "}
+                                      <span className={`font-mono font-semibold ${
+                                        parseInt(cutData.panjang) >= parseInt(panjang)
+                                          ? "text-destructive"
+                                          : "text-primary"
+                                      }`}>
                                         {buildDestiny(destiny, cutData.panjang, tinggi)}
                                       </span>
+                                      {parseInt(cutData.panjang) >= parseInt(panjang) && (
+                                        <span className="text-destructive ml-1">
+                                          ✕ harus lebih kecil dari {panjang}
+                                        </span>
+                                      )}
                                     </>
                                   )}
                                 </p>
                               </div>
-
                               <div className="space-y-2">
                                 <Label>Nama Mekanik</Label>
                                 <Input
                                   value={cutData.mekanik}
                                   onChange={(e) => setCutData({ ...cutData, mekanik: e.target.value })}
                                   placeholder="Nama Mekanik"
+                                />
+                              </div>
+                              <div className="space-y-2">
+                                <Label>
+                                  Keterangan{" "}
+                                  <span className="text-muted-foreground text-xs">(opsional)</span>
+                                </Label>
+                                <Input
+                                  value={cutData.keterangan}
+                                  onChange={(e) => setCutData({ ...cutData, keterangan: e.target.value })}
+                                  placeholder="Contoh: penyesuaian proses baru"
                                 />
                               </div>
                             </div>
