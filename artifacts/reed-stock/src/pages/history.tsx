@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { fetchMultipleSheets } from "@/lib/api";
-import { HistoryPasang, HistoryLepas, HistoryRiching, HistoryPotong, CombinedHistory } from "@/lib/types";
+import { HistoryPasang, HistoryLepas, HistoryRiching, HistoryPotong, HistoryService, HistoryPindahMesin, CombinedHistory } from "@/lib/types";
 import { Spinner } from "@/components/ui/spinner";
 import { toast } from "sonner";
 import { AlertCircle, Search } from "lucide-react";
@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 
-type FilterKey = "Semua" | "PASANG" | "LEPAS" | "RICHING" | "POTONG" | "SERVICE" | "SELESAI";
+type FilterKey = "Semua" | "PASANG" | "LEPAS" | "RICHING" | "POTONG" | "SERVICE" | "SELESAI" | "PINDAH" | "RENAME";
 
 const formatDateTime = (str: string): string => {
   if (!str || str === "-") return "-";
@@ -27,6 +27,10 @@ const getCategory = (item: CombinedHistory): FilterKey => {
   if (item.type === ("RICHING" as any)) return "RICHING";
   if (item.type === ("POTONG" as any))  return "POTONG";
   if (item.type === "PASANG") return "PASANG";
+  if (item.type === ("PINDAH" as any))  return "PINDAH";
+  if (item.type === ("RENAME" as any))  return "RENAME";
+  if (item.type === ("SERVICE" as any)) return "SERVICE";
+  if (item.type === ("SELESAI" as any)) return "SELESAI";
   const kondisi = (item.kondisi_sisir || "").toUpperCase();
   const mesin   = (item.nomor_mesin   || "").toUpperCase();
   if (kondisi === "KIRIM_SERVICE" || mesin.includes("DIKIRIM")) return "SERVICE";
@@ -46,11 +50,14 @@ const categoryConfig: Record<string, {
   POTONG:  { label: "POTONG",  bg: "bg-orange-500/20",  text: "text-orange-400",  border: "border-orange-500/40",  dot: "bg-orange-400"   },
   SERVICE: { label: "SERVICE", bg: "bg-yellow-500/20",  text: "text-yellow-400",  border: "border-yellow-500/40",  dot: "bg-yellow-400"   },
   SELESAI: { label: "DONE",    bg: "bg-blue-500/20",    text: "text-blue-400",    border: "border-blue-500/40",    dot: "bg-blue-400"     },
+  PINDAH:  { label: "PINDAH",  bg: "bg-[#38bdf8]/20",   text: "text-[#38bdf8]",   border: "border-[#38bdf8]/40",   dot: "bg-[#38bdf8]"    },
+  RENAME:  { label: "RENAME",  bg: "bg-[#c084fc]/20",   text: "text-[#c084fc]",   border: "border-[#c084fc]/40",   dot: "bg-[#c084fc]"    },
 };
 
 const TAB_ROWS: FilterKey[][] = [
   ["Semua", "PASANG", "LEPAS", "POTONG"],
   ["RICHING", "SERVICE", "SELESAI"],
+  ["PINDAH", "RENAME"],
 ];
 
 export default function HistoryPage() {
@@ -69,16 +76,24 @@ export default function HistoryPage() {
         "HISTORY_LEPAS",
         "HISTORY_RICHING",
         "HISTORY_POTONG",
+        "HISTORY_SERVICE",
+        "HISTORY_PINDAH_MESIN",
       ]);
-      const hpData: HistoryPasang[]   = sheets["HISTORY_PASANG"]  || [];
-      const hlData: HistoryLepas[]    = sheets["HISTORY_LEPAS"]   || [];
-      const hrData: HistoryRiching[]  = sheets["HISTORY_RICHING"] || [];
-      const hpotData: HistoryPotong[] = sheets["HISTORY_POTONG"]  || [];
+      const hpData: HistoryPasang[]      = sheets["HISTORY_PASANG"]       || [];
+      const hlData: HistoryLepas[]       = sheets["HISTORY_LEPAS"]        || [];
+      const hrData: HistoryRiching[]     = sheets["HISTORY_RICHING"]      || [];
+      const hpotData: HistoryPotong[]    = sheets["HISTORY_POTONG"]       || [];
+      // ─── FIX: app.js menulis service ke tabel terpisah HISTORY_SERVICE ───────
+      const hsData: HistoryService[]     = sheets["HISTORY_SERVICE"]      || [];
+      // ─── FIX: HISTORY_PINDAH_MESIN belum pernah di-fetch sebelumnya ──────────
+      const hmData: HistoryPindahMesin[] = sheets["HISTORY_PINDAH_MESIN"] || [];
 
       const combined: CombinedHistory[] = [
         ...hpData.map((h) => ({
           type: "PASANG" as const,
-          nomor_mesin: h.nomor_mesin,
+          sn_mesin: (h as any).sn_mesin,
+          // ─── FIX: pakai nomor_mesin_display dari v_history_pasang ────────────
+          nomor_mesin: (h as any).nomor_mesin_display ?? h.nomor_mesin,
           id_sisir: h.id_sisir,
           nomor_sisir_destiny: h.nomor_sisir_destiny,
           nama_mekanik: h.nama_mekanik,
@@ -87,7 +102,9 @@ export default function HistoryPage() {
         })),
         ...hlData.map((h) => ({
           type: "LEPAS" as const,
-          nomor_mesin: h.nomor_mesin,
+          sn_mesin: (h as any).sn_mesin,
+          // ─── FIX: pakai nomor_mesin_display dari v_history_lepas ─────────────
+          nomor_mesin: (h as any).nomor_mesin_display ?? h.nomor_mesin,
           id_sisir: h.id_sisir,
           nomor_sisir_destiny: h.nomor_sisir_destiny,
           nama_mekanik: h.nama_mekanik,
@@ -97,6 +114,7 @@ export default function HistoryPage() {
         })),
         ...hrData.map((h) => ({
           type: "RICHING" as any,
+          sn_mesin: undefined,
           nomor_mesin: "-",
           id_sisir: h.id_sisir,
           nomor_sisir_destiny: h.nomor_sisir_destiny,
@@ -108,6 +126,7 @@ export default function HistoryPage() {
         })),
         ...hpotData.map((h) => ({
           type: "POTONG" as any,
+          sn_mesin: undefined,
           nomor_mesin: "-",
           id_sisir: h.id_sisir,
           nomor_sisir_destiny: h.destiny_sesudah,
@@ -116,6 +135,34 @@ export default function HistoryPage() {
           keterangan: h.keterangan,
           destiny_sebelum: h.destiny_sebelum,
           destiny_sesudah: h.destiny_sesudah,
+          created_by: h.created_by,
+        })),
+        // ─── FIX: HISTORY_SERVICE (skema lama dari app.js) ─────────────────────
+        // jenis "TERIMA" → sisir selesai diservice & kembali; "KIRIM" → sisir dikirim utk service
+        ...hsData.map((h) => ({
+          type: (h.jenis === "TERIMA" ? "SELESAI" : "SERVICE") as any,
+          sn_mesin: undefined,
+          nomor_mesin: h.jenis === "TERIMA" ? "Selesai Service" : "Kirim Service",
+          id_sisir: h.id_sisir,
+          nomor_sisir_destiny: h.nomor_sisir_destiny,
+          nama_mekanik: h.nama_mekanik,
+          tanggal: h.tanggal,
+          keterangan: h.keterangan,
+          created_by: h.created_by,
+        })),
+        // ─── FIX: HISTORY_PINDAH_MESIN belum pernah dibaca sebelumnya ───────────
+        // keterangan "RENAME" → ganti nama mesin; selain itu → pindah lokasi mesin
+        ...hmData.map((h) => ({
+          type: (h.keterangan === "RENAME" ? "RENAME" : "PINDAH") as any,
+          sn_mesin: h.sn_mesin,
+          nomor_mesin: h.nomer_mesin || "-",
+          id_sisir: h.id_sisir || "-",
+          nomor_sisir_destiny: h.nomor_sisir_destiny,
+          posisi_lama: h.posisi_lama,
+          posisi_baru: h.posisi_baru,
+          nama_mekanik: h.nama_mekanik,
+          tanggal: h.tanggal,
+          keterangan: h.keterangan,
           created_by: h.created_by,
         })),
       ];
@@ -140,6 +187,7 @@ export default function HistoryPage() {
       list = list.filter(
         (h) =>
           h.nomor_mesin?.toLowerCase().includes(q) ||
+          (h as any).sn_mesin?.toLowerCase().includes(q) ||
           h.id_sisir?.toLowerCase().includes(q) ||
           h.nomor_sisir_destiny?.toLowerCase().includes(q) ||
           h.nama_mekanik?.toLowerCase().includes(q) ||
@@ -157,6 +205,8 @@ export default function HistoryPage() {
     POTONG:  historyData.filter((h) => getCategory(h) === "POTONG").length,
     SERVICE: historyData.filter((h) => getCategory(h) === "SERVICE").length,
     SELESAI: historyData.filter((h) => getCategory(h) === "SELESAI").length,
+    PINDAH:  historyData.filter((h) => getCategory(h) === "PINDAH").length,
+    RENAME:  historyData.filter((h) => getCategory(h) === "RENAME").length,
   };
 
   if (loading) {
@@ -242,6 +292,8 @@ export default function HistoryPage() {
             const isPotong  = cat === "POTONG";
             const isRiching = cat === "RICHING";
             const isPasang  = cat === "PASANG";
+            const isPindah  = cat === "PINDAH";
+            const isRename  = cat === "RENAME";
 
             return (
               <div
@@ -269,6 +321,21 @@ export default function HistoryPage() {
                       <span className="text-muted-foreground mx-1 text-xs">→</span>
                       <span className="text-primary text-xs font-normal">{item.destiny_sesudah}</span>
                     </p>
+                  ) : isPindah ? (
+                    <p className="text-sm font-semibold font-mono">
+                      {item.nomor_mesin}
+                      <span className="text-muted-foreground font-normal mx-1 text-xs">📍</span>
+                      <span className="text-destructive/80 text-xs font-normal">{item.posisi_lama || "-"}</span>
+                      <span className="text-muted-foreground mx-1 text-xs">→</span>
+                      <span className="text-primary text-xs font-normal">{item.posisi_baru || "-"}</span>
+                    </p>
+                  ) : isRename ? (
+                    <p className="text-sm font-semibold font-mono">
+                      <span className="text-muted-foreground font-normal mr-1 text-xs">✏</span>
+                      <span className="text-destructive/80 text-xs font-normal">{item.posisi_lama || "-"}</span>
+                      <span className="text-muted-foreground mx-1 text-xs">→</span>
+                      <span className="text-primary text-xs font-normal">{item.posisi_baru || "-"}</span>
+                    </p>
                   ) : isRiching ? (
                     <p className="text-sm font-semibold font-mono">
                       {item.id_sisir}
@@ -279,12 +346,13 @@ export default function HistoryPage() {
                     <p className="text-sm font-semibold font-mono">
                       {item.id_sisir}
                       <span className="text-muted-foreground font-normal mx-1 text-xs">{isPasang ? "→" : "←"}</span>
+                      {/* ─── FIX: tampilkan nomor_mesin terbaru dari view ─────── */}
                       <span className="text-muted-foreground font-sans font-normal text-xs">{item.nomor_mesin}</span>
                     </p>
                   )}
 
                   <div className="flex items-center gap-1.5 mt-0.5 text-[11px] text-muted-foreground flex-wrap">
-                    {!isPotong && item.nomor_sisir_destiny && (
+                    {!isPotong && !isPindah && !isRename && item.nomor_sisir_destiny && (
                       <span>{item.nomor_sisir_destiny}</span>
                     )}
                     {item.nama_mekanik && item.nama_mekanik !== "-" && (

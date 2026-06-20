@@ -127,7 +127,8 @@ export default function StokPage() {
       const combined: CombinedHistory[] = [
         ...hpData.map((h) => ({
           type: "PASANG" as const,
-          nomor_mesin: h.nomor_mesin,
+          // ─── FIX: pakai nomor_mesin_display dari v_history_pasang agar tampil nama mesin terkini ───
+          nomor_mesin: (h as any).nomor_mesin_display ?? h.nomor_mesin,
           id_sisir: h.id_sisir,
           nomor_sisir_destiny: h.nomor_sisir_destiny,
           nama_mekanik: h.nama_mekanik,
@@ -135,7 +136,8 @@ export default function StokPage() {
         })),
         ...hlData.map((h) => ({
           type: "LEPAS" as const,
-          nomor_mesin: h.nomor_mesin,
+          // ─── FIX: pakai nomor_mesin_display dari v_history_lepas agar tampil nama mesin terkini ───
+          nomor_mesin: (h as any).nomor_mesin_display ?? h.nomor_mesin,
           id_sisir: h.id_sisir,
           nomor_sisir_destiny: h.nomor_sisir_destiny,
           nama_mekanik: h.nama_mekanik,

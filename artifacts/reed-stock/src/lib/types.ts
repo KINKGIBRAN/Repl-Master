@@ -70,8 +70,35 @@ export interface HistoryPotong {
   created_at?: string;
 }
 
+export interface HistoryService {
+  id?: number;
+  id_sisir: string;
+  nomor_sisir_destiny?: string;
+  jenis: "KIRIM" | "TERIMA";
+  tanggal: string;
+  nama_mekanik?: string;
+  keterangan?: string;
+  created_by?: string;
+  created_at?: string;
+}
+
+export interface HistoryPindahMesin {
+  id?: number;
+  sn_mesin?: string | null;
+  nomer_mesin?: string;
+  id_sisir?: string;
+  nomor_sisir_destiny?: string;
+  posisi_lama?: string;
+  posisi_baru?: string;
+  nama_mekanik?: string;
+  keterangan?: string; // "RENAME" menandakan ganti nama, selain itu = pindah lokasi
+  tanggal: string;
+  created_by?: string;
+  created_at?: string;
+}
+
 export interface CombinedHistory {
-  type: "PASANG" | "LEPAS";
+  type: "PASANG" | "LEPAS" | "RICHING" | "POTONG" | "SERVICE" | "SELESAI" | "PINDAH" | "RENAME";
   nomor_mesin: string;
   id_sisir: string;
   nomor_sisir_destiny?: string;
@@ -79,9 +106,13 @@ export interface CombinedHistory {
   tanggal: string;
   kondisi_sisir?: string;
   created_by?: string;
+  sn_mesin?: string | null;
   // ─── field tambahan untuk RICHING & POTONG ───
   nama_operator?: string;
   keterangan?: string;
   destiny_sebelum?: string;
   destiny_sesudah?: string;
+  // ─── field tambahan untuk PINDAH & RENAME ───
+  posisi_lama?: string;
+  posisi_baru?: string;
 }

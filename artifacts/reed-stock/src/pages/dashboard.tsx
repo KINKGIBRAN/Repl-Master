@@ -88,18 +88,19 @@ export default function DashboardPage() {
 
   useEffect(() => { loadData(); }, [loadData]);
 
-  const handleMachineClick = async (nomerMesin: string) => {
-    setSelectedMachine(nomerMesin);
+  const handleMachineClick = async (mesin: LiveTracking) => {
+    setSelectedMachine(mesin.nomer_mesin);
     setModalVisible(true);
     setLoadingHistory(true);
     try {
       const sheets = await fetchMultipleSheets(["HISTORY_PASANG", "HISTORY_LEPAS"]);
-      const pasang = (sheets["HISTORY_PASANG"] || []).filter(
-        (h: any) => h.nomor_mesin?.trim().toLowerCase() === nomerMesin.trim().toLowerCase()
-      );
-      const lepas = (sheets["HISTORY_LEPAS"] || []).filter(
-        (h: any) => h.nomor_mesin?.trim().toLowerCase() === nomerMesin.trim().toLowerCase()
-      );
+      // ─── FIX: filter pakai sn_mesin sebagai primary match, fallback nomor_mesin ───
+      const matchMachine = (h: any) =>
+        mesin.sn_mesin
+          ? h.sn_mesin === mesin.sn_mesin
+          : h.nomor_mesin?.trim().toLowerCase() === mesin.nomer_mesin.trim().toLowerCase();
+      const pasang = (sheets["HISTORY_PASANG"] || []).filter(matchMachine);
+      const lepas = (sheets["HISTORY_LEPAS"] || []).filter(matchMachine);
       setHistoryData({ pasang, lepas });
     } catch (err) {
       console.error("Gagal memuat riwayat mesin", err);
@@ -290,7 +291,7 @@ export default function DashboardPage() {
               return (
                 <div
                   key={machine.nomer_mesin}
-                  onClick={() => handleMachineClick(machine.nomer_mesin)}
+                  onClick={() => handleMachineClick(machine)}
                   className={`list-item-animate relative rounded-xl border p-2 flex flex-col justify-between min-h-[90px] cursor-pointer active:scale-95 hover:scale-[1.03] transition-all duration-200 overflow-hidden ${
                     hasReed
                       ? "border-[#4A7FC1]/50 shadow-[0_0_12px_rgba(74,127,193,0.15)] hover:shadow-[0_0_18px_rgba(74,127,193,0.25)]"

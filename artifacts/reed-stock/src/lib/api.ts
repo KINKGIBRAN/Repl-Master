@@ -10,9 +10,12 @@ const TABLE_MAP: Record<string, string> = {
   HISTORY_POTONG:  "history_potong",
 };
 
+// ─── READ melalui view agar nomer_mesin selalu up-to-date ────────────────────
 const READ_TABLE_MAP: Record<string, string> = {
   ...TABLE_MAP,
-  LIVE_TRACKING: "v_live_tracking",
+  LIVE_TRACKING:  "v_live_tracking",
+  HISTORY_PASANG: "v_history_pasang", // ← view dengan nomor_mesin_display
+  HISTORY_LEPAS:  "v_history_lepas",  // ← view dengan nomor_mesin_display
 };
 
 function resolveTable(name: string): string {
@@ -42,7 +45,6 @@ export function invalidateCache(sheetName?: string) {
 }
 
 // ─── Normalisasi nomor_sisir_destiny ─────────────────────────────────────────
-// Contoh: "32x78x115" / "32 x 78 x 115" / "32X78X115" → selalu "32X78X115"
 function normalizeDestiny(val: string): string {
   return val
     .trim()
@@ -50,8 +52,7 @@ function normalizeDestiny(val: string): string {
     .toUpperCase();
 }
 
-// ─── CSV Line Parser (handle quoted fields dengan koma di dalamnya) ──────────
-// Contoh: "REED, LTD" tidak akan terpecah menjadi 2 kolom
+// ─── CSV Line Parser ──────────────────────────────────────────────────────────
 function parseCSVLine(line: string): string[] {
   const result: string[] = [];
   let current = "";
@@ -61,7 +62,6 @@ function parseCSVLine(line: string): string[] {
     const ch = line[i];
     if (ch === '"') {
       if (inQuotes && line[i + 1] === '"') {
-        // Escaped quote ("") → satu tanda kutip literal
         current += '"';
         i++;
       } else {
@@ -217,7 +217,6 @@ export async function importBulkFromFile(
   }
 
   const headerLine = lines[0];
-  // ✅ Gunakan parseCSVLine agar header dengan koma dalam quotes tidak terpecah
   const headers = parseCSVLine(headerLine);
 
   const validHeaders = [
@@ -239,18 +238,13 @@ export async function importBulkFromFile(
     const line = lines[i].trim();
     if (!line) continue;
 
-    // ✅ Gunakan parseCSVLine agar nilai dengan koma dalam quotes tidak terpecah
     const cells = parseCSVLine(line);
-
     const row: Record<string, string> = {};
     headers.forEach((header, idx) => {
       row[header] = cells[idx] || "";
     });
 
-    if (!row.id_sisir || row.id_sisir.trim() === "") {
-      continue;
-    }
-
+    if (!row.id_sisir || row.id_sisir.trim() === "") continue;
     rows.push(row);
   }
 
@@ -292,7 +286,6 @@ export async function importBulkFromFile(
 
       const insertData = {
         id_sisir: idTrim,
-        // ✅ Normalisasi: "32x78x115" / "32 X 78 X 115" → "32X78X115"
         nomor_sisir_destiny: normalizeDestiny(row.nomor_sisir_destiny || ""),
         merk_supplier: row.merk_supplier?.trim() || "",
         posisi_rak: row.posisi_rak?.trim() || "",
@@ -306,10 +299,7 @@ export async function importBulkFromFile(
 
       if (insertError) {
         results.failed++;
-        results.errors.push({
-          row: dataRowNumber,
-          error: insertError.message,
-        });
+        results.errors.push({ row: dataRowNumber, error: insertError.message });
       } else {
         results.success++;
         existingIds.add(idTrim);
